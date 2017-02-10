@@ -1,6 +1,11 @@
 Useful links
 ============
 
+MindMap
+-------
+
+- https://drive.mindmup.com/map/0B1Z-wk-sBrI1Sk5LNHctcFBzemM
+
 Extract Docker images / info
 ----------------------------
 
