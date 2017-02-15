@@ -16,3 +16,4 @@ Extract Docker images / info
 Modify ELFs
 -----------
 - https://github.com/thorkill/eresi/wiki/TheELFsh
+- https://github.com/tiago4orion/libmalelf
