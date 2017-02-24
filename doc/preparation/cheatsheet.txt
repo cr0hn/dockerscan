@@ -1,0 +1,35 @@
+Pushear un container:
+
+docker tag busybox 127.0.0.1:5000/cr0hn/busybox
+docker tag postgres:9.6.1-alpine 127.0.0.1:5000/cr0hn/postgres
+
+docker push 127.0.0.1:5000/cr0hn/busybox
+docker push 127.0.0.1:5000/cr0hn/postgres
+
+
+Cosas chulas:
+
+-= Borrado de imágenes =-
+
+No se pueden borrar imágenes ni manifest de los registries, a no ser que lo actives expresamente. Por defecto no se puede, ya que se configura el registry como: "pull-through cache":
+
+docker run -d -p 5000:5000 --restart=always --name registry \
+             -v `pwd`/config.yml:/etc/docker/registry/config.yml \
+             registry:2
+
+> config.yml:
+
+delete:
+    enabled: false
+
+Es decir:
+
+Si te suben un malware estará ahí por los tiempos de los tiempos.
+
+referencias: 
+- Fichero de configuracion: https://docs.docker.com/registry/configuration/
+- Pull through cache: https://docs.docker.com/registry/recipes/mirror/
+
+-= Subida de ficheros =-
+
+Si subes un fichero a un registry, se queda registrado, pero no se puede acceder a él salvo que tengas el digest. Y tampoco se puede borrar si está el Registry por defecto.

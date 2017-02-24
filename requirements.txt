@@ -1,0 +1,8 @@
+click
+requests
+colorlog
+booby-ng
+python-dxf
+
+# If SSL Connections fails, install these depenencies
+# pyOpenSSL ndg-httpsclient pyasn1
