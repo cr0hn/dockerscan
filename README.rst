@@ -30,9 +30,19 @@ A Docker analysis tools
 Very quick install
 ==================
 
+**Install from Pypi**
+
 .. code-block:: bash
 
     > python3.5 -m pip install dockerscan
+
+**From source**
+
+.. code-block:: bash
+
+    > git clone https://github.com/cr0hn/dockerscan.git dockerscan
+    > cd dockerscan
+    > python3.5 setup.py install
 
 Show options:
 
