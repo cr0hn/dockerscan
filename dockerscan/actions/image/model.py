@@ -3,8 +3,13 @@ from collections import defaultdict
 from dockerscan import SharedConfig, String
 
 
-class DockerImageModel(SharedConfig):
+class DockerImageInfoModel(SharedConfig):
     image_path = String()
+
+
+class DockerImageExtractModel(SharedConfig):
+    image_path = String()
+    extract_path = String()
 
 
 class DockerImageInfo:
@@ -75,4 +80,4 @@ class DockerImageInfo:
             self.docker_version = layer_info.get("docker_version")
 
 
-__all__ = ("DockerImageModel", "DockerImageInfo")
+__all__ = ("DockerImageInfoModel", "DockerImageInfo", "DockerImageExtractModel")

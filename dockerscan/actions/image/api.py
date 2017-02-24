@@ -1,13 +1,18 @@
 from .model import *
-from .libs.undocker import extract_docker_image, UnDockerConfig
+from .docker_commands import *
 
 
-def run_analyze_dockerscan(config: DockerImageModel) -> DockerImageInfo:
-    assert isinstance(config, DockerImageModel)
+def run_image_info_dockerscan(config: DockerImageInfoModel) -> DockerImageInfo:
+    assert isinstance(config, DockerImageInfoModel)
 
-    un_docker_config = UnDockerConfig(config.image_path)
-
-    return extract_docker_image(un_docker_config)
+    return get_docker_image_info(config.image_path)
 
 
-__all__ = ("run_analyze_dockerscan", )
+def run_image_extract_dockerscan(config: DockerImageExtractModel):
+    assert isinstance(config, DockerImageExtractModel)
+
+    extract_docker_image(config.image_path,
+                         config.extract_path)
+
+
+__all__ = ("run_image_info_dockerscan", "run_image_extract_dockerscan")

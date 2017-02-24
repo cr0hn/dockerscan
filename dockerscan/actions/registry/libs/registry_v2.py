@@ -131,7 +131,11 @@ def delete_image_v2(registry: str,
         return removed
 
     except requests.exceptions.HTTPError:
-        raise DockerscanError(" > Registry does not support delete operations")
+        raise DockerscanError("> Registry does not support delete "
+                              "operations. Default Docker Registry does not "
+                              "support deletion. For more information see: "
+                              "https://docs.docker.com/registry/"
+                              "configuration/")
 
 __all__ = ("list_repositories_v2", "upload_content_v2", "push_image_v2",
            "delete_image_v2")
