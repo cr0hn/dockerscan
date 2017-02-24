@@ -3,7 +3,7 @@ dockerscan
 
 *dockerscan: A Docker analysis tools*
 
-.. image::  https://raw.githubusercontent.com/cr0hn/dockerscan/master/doc/source/_static/dockerscan-logo.png
+.. image::  https://github.com/cr0hn/dockerscan/raw/master/doc/source/_static/dockerscan-logo.png
     :height: 64px
     :width: 64px
     :alt: ODSC logo
