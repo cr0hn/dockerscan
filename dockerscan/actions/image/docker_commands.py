@@ -30,7 +30,8 @@ log = logging.getLogger("dockerscan")
 # Aux functions
 # --------------------------------------------------------------------------
 @contextmanager
-def open_docker_image(image_path: str):
+def open_docker_image(image_path: str,
+                      image_repository: str = ""):
     """
     This function is a context manager that allow to open a docker image and
     return their layers and the layers metadata.
@@ -51,29 +52,31 @@ def open_docker_image(image_path: str):
     #: Docker image layers and tags
     image_layers_tags = {}
 
-    with tempfile.NamedTemporaryFile() as fd:
-        # If image passed as a parameter, read it
-        fd.write(open(image_path, "rb").read())
+    with tarfile.open(image_path, "r") as img:
+        # with tarfile.TarFile(fileobj=fd) as img:
+        repos = img.extractfile('repositories')
 
-        with tarfile.open(image_path, "r") as img:
-            # with tarfile.TarFile(fileobj=fd) as img:
-            repos = img.extractfile('repositories')
+        repo_content = repos.read()
+        # If data are bytes, transform to str. JSON only accept str.
+        if hasattr(repo_content, "decode"):
+            repo_content = repo_content.decode()
 
-            repo_content = repos.read()
-            # If data are bytes, transform to str. JSON only accept str.
-            if hasattr(repo_content, "decode"):
-                repo_content = repo_content.decode()
+        # Clean repo content
+        repo_content = repo_content.replace("\n", "").replace("\r", "")
 
-            # Clean repo content
-            repo_content = repo_content.replace("\n", "").replace("\r", "")
+        repos_info = json.loads(repo_content)
 
-            repos_info = json.loads(repo_content)
+        for name, tags in repos_info.items():
+            image_layers_tags[name] = " ".join(tags)
 
-            for name, tags in repos_info.items():
-                image_layers_tags[name] = " ".join(tags)
-
+        try:
+            top_layers = repos_info[image][tag]
+        except KeyError:
             try:
-                top_layers = repos_info[image][tag]
+                image_and_repo = "{}/{}".format(image_repository,
+                                                image)
+
+                top_layers = repos_info[image_and_repo][tag]
             except KeyError:
                 raise Exception(
                     'failed to find image {image} with tag {tag}'
@@ -81,8 +84,8 @@ def open_docker_image(image_path: str):
                     'error)'.format(image=image,
                                     tag=tag))
 
-            yield img, top_layers, image_layers_tags, \
-                      _find_metadata_in_layers(img, top_layers)
+        yield img, top_layers, image_layers_tags, \
+              _find_metadata_in_layers(img, top_layers)
 
 
 def _find_metadata_in_layers(img, id) -> dict:
@@ -116,13 +119,16 @@ def _find_layers(img, id):
 # --------------------------------------------------------------------------
 # Public API
 # --------------------------------------------------------------------------
-def extract_docker_image(image_path: str, extract_path: str):
+def extract_docker_image(image_path: str,
+                         extract_path: str,
+                         image_repository: str):
     """Extract a docker image content to a path location"""
     if not os.path.exists(image_path):
         raise DockerscanNotExitsError("Docker image not exits at path: {}". \
                                       format(image_path))
 
-    with open_docker_image(image_path) as (img, first_layer, _, _):
+    with open_docker_image(image_path,
+                           image_repository) as (img, first_layer, _, _):
         layers = list(_find_layers(img, first_layer))
 
         if not os.path.isdir(extract_path):
@@ -131,8 +137,10 @@ def extract_docker_image(image_path: str, extract_path: str):
         for layer_id in reversed(layers):
             log.debug('extracting layer %s', layer_id)
 
-            with tarfile.open(fileobj=img.extractfile(
-                            '%s/layer.tar' % layer_id)) as layer:
+            with tarfile.open(fileobj=img.extractfile('%s/layer.tar' %
+                                                              layer_id),
+                              errorlevel=0,
+                              dereference=True) as layer:
 
                 layer.extractall(path=extract_path)
 
@@ -154,11 +162,13 @@ def extract_docker_image(image_path: str, extract_path: str):
                                 raise
 
 
-def get_docker_image_info(image_path: str) -> DockerImageInfo:
+def get_docker_image_info(image_path: str,
+                          image_repository: str) -> DockerImageInfo:
 
     results = DockerImageInfo()
 
-    with open_docker_image(image_path) as (_, _, _, layers_meta):
+    with open_docker_image(image_path,
+                           image_repository) as (_, _, _, layers_meta):
         for layer in layers_meta:
             results.add_layer_info(layer)
 

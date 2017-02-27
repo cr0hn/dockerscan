@@ -45,5 +45,23 @@ def launch_dockerscan_image_extract_in_console(config: DockerImageInfoModel):
         log.console("Image content extracted")
 
 
+def launch_dockerscan_image_analyze_in_console(config: DockerImageAnalyzeModel):
+    """Launch in console mode"""
+
+    log.setLevel(get_log_level(config.verbosity))
+
+    with run_in_console():
+
+        log.console("Starting the analysis of docker image...")
+        log.console("Selected image: '{}'".format(
+            os.path.basename(config.image_path)))
+
+        results = run_image_analyze_dockerscan(config)
+
+        # Display image summary
+        log.console("Analysis finished. Results:")
+        display_results_console(results, log)
+
 __all__ = ("launch_dockerscan_image_info_in_console",
-           "launch_dockerscan_image_extract_in_console")
+           "launch_dockerscan_image_extract_in_console",
+           "launch_dockerscan_image_analyze_in_console")

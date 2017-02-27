@@ -4,6 +4,7 @@ import logging
 
 from typing import Union, Set
 from urllib.parse import urlparse
+from collections import defaultdict
 
 import requests
 
@@ -138,7 +139,7 @@ def display_results_console(results: dict, log):
                 log.console("      > {}".format(p))
 
         # Display dictionaries
-        elif type(value) is dict:
+        elif type(value) in (defaultdict, dict):
             log.console("  - {}:".format(pretty_prop))
 
             for p, v in value.items():

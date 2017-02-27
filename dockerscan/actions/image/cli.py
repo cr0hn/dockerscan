@@ -15,6 +15,7 @@ def image(ctx, **kwargs):
 @image.command(help="get docker image information")
 @click.pass_context
 @click.argument("image_path")
+@click.option("--image-repository", "-r", "image_repository")
 def info(ctx, **kwargs):
     config = DockerImageInfoModel(**ctx.obj, **kwargs)
 
@@ -27,9 +28,22 @@ def info(ctx, **kwargs):
 @click.pass_context
 @click.argument("image_path")
 @click.argument("extract_path")
+@click.option("--image-repository", "-r", "image_repository")
 def extract(ctx, **kwargs):
     config = DockerImageExtractModel(**ctx.obj, **kwargs)
 
     # Check if valid
     if check_console_input_config(config):
         launch_dockerscan_image_extract_in_console(config)
+
+
+@image.command(help="looking for sensitive date into a docker image")
+@click.pass_context
+@click.argument("image_path")
+@click.option("--image-repository", "-r", "image_repository")
+def analyze(ctx, **kwargs):
+    config = DockerImageAnalyzeModel(**ctx.obj, **kwargs)
+
+    # Check if valid
+    if check_console_input_config(config):
+        launch_dockerscan_image_analyze_in_console(config)

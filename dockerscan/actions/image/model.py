@@ -5,11 +5,18 @@ from dockerscan import SharedConfig, String
 
 class DockerImageInfoModel(SharedConfig):
     image_path = String()
+    image_repository = String(default="")
+
+
+class DockerImageAnalyzeModel(SharedConfig):
+    image_path = String()
+    image_repository = String(default="")
 
 
 class DockerImageExtractModel(SharedConfig):
     image_path = String()
     extract_path = String()
+    image_repository = String(default="")
 
 
 class DockerImageInfo:
@@ -24,6 +31,7 @@ class DockerImageInfo:
         self.cmd = ""
         self.labels = []
         self.environment = []
+        self.user = ""
 
         #: dict - { PORT_NO: ["TCP", "UDP"]}
         #: dict - { PORT_NO: ["TCP"]}
@@ -38,7 +46,8 @@ class DockerImageInfo:
             basic_info = {
                 "Hostname": "host_name",
                 "WorkingDir": "working_dir",
-                "Entrypoint": "entry_point"
+                "Entrypoint": "entry_point",
+                "User": "user"
             }
             list_info = {
                 "Env": "environment",
@@ -56,13 +65,13 @@ class DockerImageInfo:
                     class_value = getattr(self, class_prop)
                     class_value.extend(json_value)
 
-            if "Cmd" in container_config:
+            if container_config.get("Cmd", None):
                 # Get only the Cmd Command of the last layer
                 if "container" in layer_info:
                     self.cmd = " ".join(container_config.get("Cmd"))
 
             # Add exposed ports
-            if "ExposedPorts" in container_config:
+            if container_config.get("ExposedPorts"):
                 for port in container_config.get("ExposedPorts").keys():
                     port, proto = port.split("/")
 
@@ -70,14 +79,15 @@ class DockerImageInfo:
 
         # Only storage the date for the last layer. And only the last layer
         # contains "container" property
-        if "container" in layer_info:
+        if layer_info.get("container", None):
             self.created_date = layer_info.get("created")
 
-        if "author" in layer_info:
+        if layer_info.get("author"):
             self.author = layer_info.get("author")
 
-        if "docker_version" in layer_info:
+        if layer_info.get("docker_version"):
             self.docker_version = layer_info.get("docker_version")
 
 
-__all__ = ("DockerImageInfoModel", "DockerImageInfo", "DockerImageExtractModel")
+__all__ = ("DockerImageInfoModel", "DockerImageInfo",
+           "DockerImageExtractModel", "DockerImageAnalyzeModel")
