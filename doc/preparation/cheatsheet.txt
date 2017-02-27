@@ -33,3 +33,8 @@ referencias:
 -= Subida de ficheros =-
 
 Si subes un fichero a un registry, se queda registrado, pero no se puede acceder a él salvo que tengas el digest. Y tampoco se puede borrar si está el Registry por defecto.
+
+-= Compilar la librerya dinámica =-
+
+gcc -c -fpic reverse_shell_library.c
+gcc -shared -o reverse_shell.so reverse_shell_library.o
