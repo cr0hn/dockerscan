@@ -16,7 +16,7 @@ int  con()
 	int pid = fork();
     	if(pid == 0)
 	{	
-		char buffy[] = "connecting people\n\r\0";
+		char buffy[] = "connecting people\n\r";
     		struct sockaddr_in sa;
     		int s;
 
