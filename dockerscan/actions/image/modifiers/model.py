@@ -7,6 +7,7 @@ class DockerImageInfoModifyTrojanizeModel(SharedConfig):
     remote_addr = String()
     remote_port = String(default="2222")
     output_image = String(default="")
+    custom_shell = String(default="")
 
 
 __all__ = ("DockerImageInfoModifyTrojanizeModel", )

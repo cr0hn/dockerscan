@@ -474,4 +474,5 @@ __all__ = ("open_docker_image", "extract_layer_in_tmp_dir",
            "extract_docker_image", "extract_docker_layer",
            "create_new_docker_image",
            "extract_docker_layer", "get_layers_ids_from_manifest",
-           "update_layer_environment_vars", "get_root_json_from_image")
+           "update_layer_environment_vars", "get_root_json_from_image",
+           "read_file_from_image")

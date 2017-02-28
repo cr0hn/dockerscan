@@ -26,6 +26,7 @@ def modify(ctx, **kwargs):
               default="2222",
               help="Remote port where to connect to on shell starts")
 @click.option("--output", "-o", "output_image")
+@click.option("--custom-shell", "-S", "custom_shell")
 @click.option("--image-repository",
               "-r",
               "image_repository",
