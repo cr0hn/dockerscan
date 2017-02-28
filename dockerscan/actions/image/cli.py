@@ -3,6 +3,7 @@ import click
 
 from .model import *
 from .console import *
+from .modifiers.cli import *
 from ..helpers import check_console_input_config
 
 
@@ -15,7 +16,10 @@ def image(ctx, **kwargs):
 @image.command(help="get docker image information")
 @click.pass_context
 @click.argument("image_path")
-@click.option("--image-repository", "-r", "image_repository")
+@click.option("--image-repository",
+              "-r",
+              "image_repository",
+              help="in 'my_user/nginx:latest -> Repository is 'my_user''")
 def info(ctx, **kwargs):
     config = DockerImageInfoModel(**ctx.obj, **kwargs)
 
@@ -28,7 +32,10 @@ def info(ctx, **kwargs):
 @click.pass_context
 @click.argument("image_path")
 @click.argument("extract_path")
-@click.option("--image-repository", "-r", "image_repository")
+@click.option("--image-repository",
+              "-r",
+              "image_repository",
+              help="in 'my_user/nginx:latest -> Repository is 'my_user''")
 def extract(ctx, **kwargs):
     config = DockerImageExtractModel(**ctx.obj, **kwargs)
 
@@ -40,10 +47,15 @@ def extract(ctx, **kwargs):
 @image.command(help="looking for sensitive date into a docker image")
 @click.pass_context
 @click.argument("image_path")
-@click.option("--image-repository", "-r", "image_repository")
+@click.option("--image-repository",
+              "-r",
+              "image_repository",
+              help="in 'my_user/nginx:latest -> Repository is 'my_user''")
 def analyze(ctx, **kwargs):
     config = DockerImageAnalyzeModel(**ctx.obj, **kwargs)
 
     # Check if valid
     if check_console_input_config(config):
         launch_dockerscan_image_analyze_in_console(config)
+
+image.add_command(modify)

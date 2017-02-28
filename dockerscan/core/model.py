@@ -5,6 +5,5 @@ from booby import *
 
 class SharedConfig(Model):
     verbosity = Integer(default=0)
-    # worker = String(choices=['process', 'threads'])
-    # concurrency = Integer()
+    debug = Boolean(default=False)
     timeout = Integer(default=10)

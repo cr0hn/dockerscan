@@ -6,21 +6,21 @@ dockerscan
 .. image::  https://github.com/cr0hn/dockerscan/raw/master/doc/source/_static/dockerscan-logo.png
     :height: 64px
     :width: 64px
-    :alt: ODSC logo
+    :alt: DockerScan logo
 
-+----------------+--------------------------------------------+
-|Project site    | https://github.com/cr0hn/dockerscan        |
-+----------------+--------------------------------------------+
-|Issues          | https://github.com/cr0hn/dockerscan/issues/|
-+----------------+--------------------------------------------+
-|Documentation   | https://dockerscan.readthedocs.org/        |
-+----------------+--------------------------------------------+
-|Authors         | Roberto Muñoz / Daniel Garcia (cr0hn)      |
-+----------------+--------------------------------------------+
-|Latest Version  | 1.0.0                                      |
-+----------------+--------------------------------------------+
-|Python versions | 3.5 or above                               |
-+----------------+--------------------------------------------+
++----------------+--------------------------------------------------+
+|Project site    | http://github.com/cr0hn/dockerscan               |
++----------------+--------------------------------------------------+
+|Issues          | https://github.com/cr0hn/dockerscan/issues/      |
++----------------+--------------------------------------------------+
+|Author          | Daniel Garcia (cr0hn) / Roberto Munoz (robskye)  |
++----------------+--------------------------------------------------+
+|Documentation   | http://dockerscan.readthedocs.org                |
++----------------+--------------------------------------------------+
+|Last Version    | 1.0.0a1                                          |
++----------------+--------------------------------------------------+
+|Python versions | 3.5 or above                                     |
++----------------+--------------------------------------------------+
 
 What's dockerscan
 =================

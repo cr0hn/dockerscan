@@ -15,7 +15,7 @@ def launch_dockerscan_image_info_in_console(config: DockerImageInfoModel):
 
     log.setLevel(get_log_level(config.verbosity))
 
-    with run_in_console():
+    with run_in_console(config.debug):
 
         log.console("Starting analyzing docker image...")
         log.console("Selected image: '{}'".format(
@@ -33,7 +33,7 @@ def launch_dockerscan_image_extract_in_console(config: DockerImageInfoModel):
 
     log.setLevel(get_log_level(config.verbosity))
 
-    with run_in_console():
+    with run_in_console(config.debug):
 
         log.console("Starting the extraction of docker image...")
         log.console("Selected image: '{}'".format(
@@ -50,7 +50,7 @@ def launch_dockerscan_image_analyze_in_console(config: DockerImageAnalyzeModel):
 
     log.setLevel(get_log_level(config.verbosity))
 
-    with run_in_console():
+    with run_in_console(config.debug):
 
         log.console("Starting the analysis of docker image...")
         log.console("Selected image: '{}'".format(
@@ -61,6 +61,7 @@ def launch_dockerscan_image_analyze_in_console(config: DockerImageAnalyzeModel):
         # Display image summary
         log.console("Analysis finished. Results:")
         display_results_console(results, log)
+
 
 __all__ = ("launch_dockerscan_image_info_in_console",
            "launch_dockerscan_image_extract_in_console",

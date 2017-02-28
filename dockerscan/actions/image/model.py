@@ -90,4 +90,4 @@ class DockerImageInfo:
 
 
 __all__ = ("DockerImageInfoModel", "DockerImageInfo",
-           "DockerImageExtractModel", "DockerImageAnalyzeModel")
+           "DockerImageExtractModel", "DockerImageAnalyzeModel",)

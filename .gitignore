@@ -88,5 +88,4 @@ ENV/
 # Rope project settings
 .ropeproject
 .idea/
-/.idea/
 docker_images/

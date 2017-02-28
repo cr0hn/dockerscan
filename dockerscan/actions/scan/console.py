@@ -13,7 +13,7 @@ def launch_dockerscan_scan_in_console(config: DockerScanModel):
 
     log.setLevel(get_log_level(config.verbosity))
 
-    with run_in_console():
+    with run_in_console(config.debug):
         run_scan_dockerscan(config)
 
 __all__ = ("launch_dockerscan_scan_in_console",)

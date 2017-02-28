@@ -13,14 +13,18 @@ with codecs.open(version_file, 'r', 'latin1') as fp:  # pragma no cover
                              fp.read(), re.M)[0]
     except IndexError:
         raise RuntimeError('Unable to determine version.')
-    
+
 # --------------------------------------------------------------------------
 # Common options for command line interface
 # --------------------------------------------------------------------------
 global_options_list = (
     # General
-    click.option('-v', 'verbosity', count=True, type=int, default=1, help='Verbose output'),
-    click.option('--quiet', '-q', 'verbosity', flag_value=0, help='Minimal output'),
+    click.option('-v', 'verbosity', count=True, type=int, default=1,
+                 help='Verbose output'),
+    click.option('-d', 'debug', is_flag=True, default=False,
+                 help='enable debug'),
+    click.option('--quiet', '-q', 'verbosity', flag_value=0,
+                 help='Minimal output'),
     click.version_option(version=version)
 )
 
@@ -28,20 +32,20 @@ global_options_list = (
 class global_options(object):
     def __init__(self, invoke_without_command=False):
         assert isinstance(invoke_without_command, bool)
-        
+
         self.invoke_without_command = invoke_without_command
-    
+
     def __call__(self, f):
         def wrapped_f(*args):
             fn = f
             for option in reversed(global_options_list):
                 fn = option(f)
-            
+
             fn = click.group(context_settings={'help_option_names': ['-h', '--help']},
                              invoke_without_command=self.invoke_without_command)(fn)
-            
+
             return fn
-        
+
         return wrapped_f()
 
 

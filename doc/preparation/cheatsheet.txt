@@ -26,7 +26,7 @@ Es decir:
 
 Si te suben un malware estará ahí por los tiempos de los tiempos.
 
-referencias: 
+referencias:
 - Fichero de configuracion: https://docs.docker.com/registry/configuration/
 - Pull through cache: https://docs.docker.com/registry/recipes/mirror/
 

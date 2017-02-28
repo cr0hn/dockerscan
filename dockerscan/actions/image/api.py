@@ -1,15 +1,22 @@
 import tempfile
 
+from ...core import DockerscanError
+
 from .model import *
+from .docker_api import *
 from .image_analyzer import *
-from .docker_commands import *
 
 
 def run_image_info_dockerscan(config: DockerImageInfoModel) -> DockerImageInfo:
     assert isinstance(config, DockerImageInfoModel)
 
-    return get_docker_image_info(config.image_path,
-                                 config.image_repository)
+    # Get docker info
+    docker_info = DockerImageInfo()
+    for layer in get_docker_image_layers(config.image_path,
+                                         config.image_repository):
+        docker_info.add_layer_info(layer)
+
+    return docker_info
 
 
 def run_image_extract_dockerscan(config: DockerImageExtractModel):
@@ -26,8 +33,14 @@ def run_image_analyze_dockerscan(config: DockerImageAnalyzeModel):
     with tempfile.TemporaryDirectory() as tmp_dir:
 
         # Get docker info
-        docker_info = get_docker_image_info(config.image_path,
-                                            config.image_repository)
+        docker_info = DockerImageInfo()
+
+        try:
+            for layer in get_docker_image_layers(config.image_path,
+                                                 config.image_repository):
+                docker_info.add_layer_info(layer)
+        except KeyError as e:
+            raise DockerscanError(e)
 
         # Extract docker data
         extract_docker_image(config.image_path,
@@ -42,4 +55,4 @@ def run_image_analyze_dockerscan(config: DockerImageAnalyzeModel):
 
 __all__ = ("run_image_info_dockerscan",
            "run_image_extract_dockerscan",
-           "run_image_analyze_dockerscan")
+           "run_image_analyze_dockerscan",)
