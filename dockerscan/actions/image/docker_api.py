@@ -70,7 +70,7 @@ def open_docker_image(image_path: str,
     This function is a context manager that allow to open a docker image and
     return their layers and the layers metadata.
 
-    yields img:TarFile, top_layers, image_and_tag, manifest
+    yields img:TarFile, first_layer, image_and_tag, manifest
 
     >>> with open_docker_image("~/images/nginx:latest") as (img, first_layer, image_and_tag, manifest):
             print(img)
@@ -218,12 +218,60 @@ def build_manifest_with_new_layer(old_manifest: dict,
     return new_manifest
 
 
+def read_file_from_image(img: tarfile.TarFile,
+                         file_path: str,
+                         autoclose=False) -> bytes:
+    if autoclose:
+        with closing(img.extractfile(file_path)) as fd:
+            return fd.read()
+    else:
+        return img.extractfile(file_path).read()
+
+
+def replace_file_in_image(file_to_replace: str,
+                          content_or_path: bytes,
+                          img: tarfile.TarFile):
+    # Is content or path?
+    if not os.path.exists(content_or_path):
+
+        # Is a content
+        t = tarfile.TarInfo(file_to_replace)
+        t.size = len(content_or_path)
+        img.addfile(t, io.BytesIO(content_or_path))
+
+    else:
+        # Is a path
+        img.add(content_or_path, file_to_replace)
+
+
+def update_layer_environment_vars(json_info: dict,
+                                  new_environment_vars: dict) -> dict:
+
+    new_json_info = json_info.copy()
+
+    update_points = [
+        new_json_info["config"]["Env"],
+        new_json_info["container_config"]["Env"]
+    ]
+
+    for point in update_points:
+        for var_name, var_value in new_environment_vars.items():
+            point.append("{}={}".format(
+                var_name,
+                var_value
+            ))
+
+    return new_json_info
+
+
 def create_new_docker_image(manifest: dict,
                             image_output_path: str,
                             img: tarfile.TarFile,
                             old_layer_digest: str,
                             new_layer_path: str,
-                            new_layer_digest: str):
+                            new_layer_digest: str,
+                            json_metadata_last_layer: dict = None,
+                            json_metadata_root: dict = None):
     with tarfile.open(image_output_path, "w") as s:
 
         for f in img.getmembers():
@@ -233,12 +281,13 @@ def create_new_docker_image(manifest: dict,
             if f.name == "manifest.json":
                 # Dump Manifest to JSON
                 new_manifest_json = json.dumps(manifest).encode()
-                t = tarfile.TarInfo("manifest.json")
-                t.size = len(new_manifest_json)
+                replace_file_in_image("manifest.json",
+                                      new_manifest_json,
+                                      s)
 
-                s.addfile(t, io.BytesIO(new_manifest_json))
-
-            # Add new trojanized layer
+            #
+            # NEW LAYER INFO
+            #
             elif old_layer_digest in f.name:
                 # Skip for old layer.tar file
                 if "layer" in f.name:
@@ -251,46 +300,73 @@ def create_new_docker_image(manifest: dict,
                             f.name,
                             new_layer_digest
                         ))
-                    s.add(new_layer_path,
-                          "{}/layer.tar".format(new_layer_digest))
+
+                    replace_file_in_image("{}/layer.tar".format(
+                        new_layer_digest),
+                        new_layer_path,
+                        s)
                 else:
                     #
                     # Extra files: "json" and "VERSION"
                     #
-                    c = img.extractfile(f).read()
-                    t = tarfile.TarInfo("{}/{}".format(
-                        new_layer_digest,
-                        os.path.basename(f.name)
-                    ))
+                    c = read_file_from_image(img, f.name, autoclose=False)
 
                     if "json" in f.name:
                         # Modify the JSON content to add the new
                         # hash
-                        c = c.decode(). \
-                            replace(old_layer_digest,
-                                    new_layer_digest).encode()
+                        if json_metadata_last_layer:
+                            c = json.dumps(json_metadata_last_layer).encode()
+                        else:
+                            c = c.decode().replace(old_layer_digest,
+                                                   new_layer_digest).encode()
 
-                    t.size = len(c)
-                    s.addfile(t, io.BytesIO(c))
+                    replace_file_in_image("{}/{}".format(
+                        new_layer_digest,
+                        os.path.basename(f.name)), c, s)
 
+            #
+            # Root .json file with the global info
+            #
             elif ".json" in f.name and "/" not in f.name:
-                c = img.extractfile(f).read()
-                t = tarfile.TarInfo(f.name)
+                c = read_file_from_image(img, f, autoclose=False)
 
                 # Modify the JSON content to add the new
                 # hash
-                j = json.loads(c.decode())
+                if json_metadata_root:
+                    j = json_metadata_root
+                else:
+                    j = json.loads(c.decode())
+
                 j["rootfs"]["diff_ids"][-1] = \
                     "sha256:{}".format(new_layer_digest)
 
                 new_c = json.dumps(j).encode()
 
-                t.size = len(new_c)
-                s.addfile(t, io.BytesIO(new_c))
+                replace_file_in_image(f.name, new_c, s)
 
             # Add the rest of files / dirs
             else:
                 s.addfile(f, img.extractfile(f))
+
+
+def get_root_json_from_image(img: tarfile.TarFile) -> Tuple[str, dict]:
+    """
+    Every docker image has a root .json file with the metadata information.
+    this function locate this file, load it and return the value of it and
+    their name
+
+    >>> get_docker_image_layers(img)
+    ('db079554b4d2f7c65c4df3adae88cb72d051c8c3b8613eb44e86f60c945b1ca7', dict(...))
+    """
+    for f in img.getmembers():
+        if f.name.endswith("json") and "/" not in f.name:
+            c = img.extractfile(f.name).read()
+            if hasattr(c, "decode"):
+                c = c.decode()
+
+            return f.name.split(".")[0], json.loads(c)
+
+    return None, None
 
 
 def get_file_path_from_img(image_content_dir: str,
@@ -310,9 +386,10 @@ def copy_file_to_image_folder(image_content_dir: str,
         dst_file = dst_file[1:]
 
     remote_path = os.path.join(image_content_dir, dst_file)
+    remote_dir = os.path.dirname(remote_path)
 
-    if not os.path.exists(remote_path):
-        os.makedirs(remote_path)
+    if not os.path.exists(remote_dir):
+        os.makedirs(remote_dir)
 
     shutil.copy(src_file,
                 remote_path)
@@ -396,4 +473,5 @@ __all__ = ("open_docker_image", "extract_layer_in_tmp_dir",
            "get_file_path_from_img", "copy_file_to_image_folder",
            "extract_docker_image", "extract_docker_layer",
            "create_new_docker_image",
-           "extract_docker_layer", "get_layers_ids_from_manifest")
+           "extract_docker_layer", "get_layers_ids_from_manifest",
+           "update_layer_environment_vars", "get_root_json_from_image")

