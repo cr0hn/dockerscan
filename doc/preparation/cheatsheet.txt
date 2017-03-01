@@ -38,3 +38,31 @@ Si subes un fichero a un registry, se queda registrado, pero no se puede acceder
 
 gcc -c -fpic reverse_shell_library.c
 gcc -shared -o reverse_shell.so reverse_shell_library.o
+
+
+-= Cambiar entry-point ejemplo =-
+
+1 - Mostrar la info de la imagen "rawmind/alpine-traefik:1.1.2-1"
+
+python __main__.py -vvvvvv image info docker_images/alpine-traefik\:1.1.2-1
+
+2 - Cambiar el entry-point
+
+python __main__.py -vvvvvv image modify entrypoint docker_images/alpine-traefik:1.1.2-1 /bin/bash
+
+3 - Mostrar la info del nuevo container:
+
+python __main__.py -vvvvvv image info alpine-traefik\:1.1.2-1.tar
+
+4 - Cargar el container en docker:
+
+docker load -i alpine-traefik\:1.1.2-1.tar
+
+5 - Ejecutar el container
+
+docker run --rm rawmind/alpine-traefik:1.1.2-1
+
+Y de modo interactivo (recordar que se ha cambiado el entry-point a bash. Lo que implica que se ejecutará y acabará bash):
+
+docker run --rm -it rawmind/alpine-traefik:1.1.2-1
+

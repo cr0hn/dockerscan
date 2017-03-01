@@ -9,6 +9,7 @@ https://github.com/larsks/undocker
 
 import os
 import io
+import re
 import errno
 import shutil
 import os.path
@@ -294,9 +295,9 @@ def read_file_from_image(img: tarfile.TarFile,
         return img.extractfile(file_path).read()
 
 
-def replace_file_in_image(file_to_replace: str,
-                          content_or_path: bytes,
-                          img: tarfile.TarFile):
+def replace_or_append_file_to_image(file_to_replace: str,
+                                    content_or_path: bytes,
+                                    img: tarfile.TarFile):
     # Is content or path?
     if not os.path.exists(content_or_path):
 
@@ -363,6 +364,22 @@ def update_layer_user(json_info: dict,
     return new_json_info
 
 
+def update_layer_entry_point(json_info: dict,
+                             new_cmd: str) -> dict:
+
+    new_json_info = json_info.copy()
+
+    update_points = [
+        new_json_info["config"],
+        new_json_info["container_config"]
+    ]
+
+    for point in update_points:
+        point["Entrypoint"] = new_cmd
+
+    return new_json_info
+
+
 def create_new_docker_image(manifest: dict,
                             image_output_path: str,
                             img: tarfile.TarFile,
@@ -380,9 +397,9 @@ def create_new_docker_image(manifest: dict,
             if f.name == "manifest.json":
                 # Dump Manifest to JSON
                 new_manifest_json = json.dumps(manifest).encode()
-                replace_file_in_image("manifest.json",
-                                      new_manifest_json,
-                                      s)
+                replace_or_append_file_to_image("manifest.json",
+                                                new_manifest_json,
+                                                s)
 
             #
             # NEW LAYER INFO
@@ -400,7 +417,7 @@ def create_new_docker_image(manifest: dict,
                             new_layer_digest
                         ))
 
-                    replace_file_in_image("{}/layer.tar".format(
+                    replace_or_append_file_to_image("{}/layer.tar".format(
                         new_layer_digest),
                         new_layer_path,
                         s)
@@ -419,7 +436,7 @@ def create_new_docker_image(manifest: dict,
                             c = c.decode().replace(old_layer_digest,
                                                    new_layer_digest).encode()
 
-                    replace_file_in_image("{}/{}".format(
+                    replace_or_append_file_to_image("{}/{}".format(
                         new_layer_digest,
                         os.path.basename(f.name)), c, s)
 
@@ -438,7 +455,7 @@ def create_new_docker_image(manifest: dict,
 
                 new_c = json.dumps(j).encode()
 
-                replace_file_in_image(f.name, new_c, s)
+                replace_or_append_file_to_image(f.name, new_c, s)
 
             elif ".json" in f.name and "/" not in f.name:
                 c = read_file_from_image(img, f, autoclose=False)
@@ -455,7 +472,7 @@ def create_new_docker_image(manifest: dict,
 
                 new_c = json.dumps(j).encode()
 
-                replace_file_in_image(f.name, new_c, s)
+                replace_or_append_file_to_image(f.name, new_c, s)
 
             # Add the rest of files / dirs
             else:
@@ -562,6 +579,63 @@ def extract_docker_image(image_path: str,
             extract_docker_layer(img, layer_id, extract_path)
 
 
+def resolve_text_var_from_metadata_vars(text: str,
+                                        image_metadata: dict) -> str:
+    if "$" not in text:
+        return text
+
+    # Extract var name
+    REGEX_EXTRACT_ENV_VAR = re.compile(r'''(\$[{]*[\w]+[}]*)''')
+    REGEX_EXTRACT_ENV_VAR_NAME = re.compile(r'''(\$[{]*)([\w]+)([}]*)''')
+
+    var_name_mark = REGEX_EXTRACT_ENV_VAR.search(text).group(1)
+    var_name = REGEX_EXTRACT_ENV_VAR_NAME.search(var_name_mark).group(2)
+
+    # Get image metadata vars
+    image_metadata_environ = set()
+    image_metadata_environ.update(image_metadata["config"]["Env"])
+    image_metadata_environ.update(image_metadata["container_config"]["Env"])
+
+    # Search in environment vars
+    for env in image_metadata_environ:
+        env_name, env_value = env.split("=", maxsplit=1)
+
+        if var_name in env_name:
+            text = text.replace(var_name_mark,
+                                env_value)
+            break
+
+    return text
+
+
+def get_entry_point_from_image_metadata(image_metadata: dict) -> str:
+    # Build the launching command
+    entrypoint = image_metadata["config"]["Entrypoint"]
+
+    if type(entrypoint) is list:
+        entrypoint = " ".join(entrypoint)
+
+    # Locate the entry-point
+    cmd = image_metadata["config"]["Cmd"]
+    if type(cmd) is list:
+        cmd = " ".join(cmd)
+
+    if entrypoint and cmd:
+        start_point = "{} {}".format(entrypoint, cmd)
+    elif entrypoint and not cmd:
+        start_point = entrypoint
+    elif not entrypoint and cmd:
+        start_point = cmd
+    else:
+        start_point = ""
+
+    raw_start_point = start_point.strip()
+
+    # replace environment vars, like ${HOME} in entry point
+    return resolve_text_var_from_metadata_vars(raw_start_point,
+                                               image_metadata)
+
+
 def get_docker_image_layers(image_path: str) -> dict:
     """
     This function get a docker image layers and yield them
@@ -585,4 +659,8 @@ __all__ = ("open_docker_image", "extract_layer_in_tmp_dir",
            "extract_docker_layer", "get_layers_ids_from_manifest",
            "update_layer_environment_vars", "get_root_json_from_image",
            "read_file_from_image", "update_layer_user",
-           "modify_docker_image_metadata")
+           "modify_docker_image_metadata",
+           "get_entry_point_from_image_metadata",
+           "resolve_text_var_from_metadata_vars",
+           "replace_or_append_file_to_image",
+           "update_layer_entry_point")

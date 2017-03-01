@@ -127,5 +127,47 @@ def run_image_modify_user_dockerscan(
                                              new_json_info_root_layer)
 
 
+def run_image_modify_entry_point_dockerscan(
+        config: DockerImageInfoModifyEntryPointModel):
+
+    assert isinstance(config, DockerImageInfoModifyEntryPointModel)
+
+    output_docker_image = config.output_image
+    image_path = config.image_path
+
+    if not output_docker_image:
+        output_docker_image = os.path.basename(config.image_path)
+
+    if not output_docker_image.endswith("tar"):
+        output_docker_image += ".tar"
+
+    new_entry_point = config.new_entry_point
+
+    add_binary_path = config.binary_path
+    if add_binary_path:
+        #
+        # Add the new file to the image
+        #
+        add_binary_path = os.path.abspath(add_binary_path)
+
+        with open_docker_image(image_path) as (img, _, _, _):
+            replace_or_append_file_to_image(add_binary_path,
+                                            new_entry_point,
+                                            img)
+
+    with modify_docker_image_metadata(image_path,
+                                      output_docker_image) as (last_layer_json,
+                                                               root_layer_json):
+
+        new_json_data_last_layer = update_layer_entry_point(last_layer_json,
+                                                            new_entry_point)
+        new_json_info_root_layer = update_layer_entry_point(root_layer_json,
+                                                            new_entry_point)
+
+        raise DockerscanReturnContextManager(new_json_data_last_layer,
+                                             new_json_info_root_layer)
+
+
 __all__ = ("run_image_modify_trojanize_dockerscan",
-           "run_image_modify_user_dockerscan")
+           "run_image_modify_user_dockerscan",
+           "run_image_modify_entry_point_dockerscan")

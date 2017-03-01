@@ -1,4 +1,5 @@
 import re
+import string
 
 from collections import defaultdict
 
@@ -101,6 +102,7 @@ def _find_user_in_start_point(image_location: str,
                               image_metadata: DockerImageInfo) -> str:
     launch_command = start_point
 
+    is_binary = False
     # If start point is a shell script, then open it
     if launch_command.endswith("sh"):
         _shell_path = start_point[start_point.rfind(" ") + 1:]
@@ -119,16 +121,23 @@ def _find_user_in_start_point(image_location: str,
         # Clean
         _shell_location = _shell_location.replace("//", "/")
 
-        launch_command = open(_shell_location, "r").read()
+        # Check if _shell is a binary file
+        is_binary = open(_shell_location,
+                         "r",
+                         errors="ignore").read(1) in string.printable
+        if not is_binary:
+            launch_command = open(_shell_location, "r", errors="ignore").read()
 
     #
     # Try to find "sudo" or "gosu" or "su -c '...'"
     #
     SUDO_PATTERNS = ("sudo", "gosu", "su -c")
-
-    for pattern in SUDO_PATTERNS:
-        if pattern in launch_command:
-            return "non-root"
+    if not is_binary:
+        for pattern in SUDO_PATTERNS:
+            if pattern in launch_command:
+                return "non-root"
+        else:
+            return "root"
     else:
         return "root"
 

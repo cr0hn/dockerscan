@@ -47,6 +47,23 @@ def user(ctx, **kwargs):
     if check_console_input_config(config):
         launch_dockerscan_image_modify_user_in_console(config)
 
+
+@modify.command(help="change docker entry point")
+@click.pass_context
+@click.argument("image_path")
+@click.argument("new_entry_point")
+@click.option("--add",
+              "-a",
+              "binary_path",
+              help="binary path use instead of current entry-point")
+@click.option("--output", "-o", "output_image")
+def entrypoint(ctx, **kwargs):
+    config = DockerImageInfoModifyEntryPointModel(**ctx.obj, **kwargs)
+
+    # Check if valid
+    if check_console_input_config(config):
+        launch_dockerscan_image_modify_entrypoint_in_console(config)
+
 #
 # - Inject binary
 # - Inject LD_PRELOAD -> as env vars

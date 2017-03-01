@@ -15,5 +15,13 @@ class DockerImageInfoModifyUserModel(SharedConfig):
     new_user = String(default="")
 
 
+class DockerImageInfoModifyEntryPointModel(SharedConfig):
+    image_path = String()
+    new_entry_point = String()
+    output_image = String(default="")
+    binary_path = String(default="")
+
+
 __all__ = ("DockerImageInfoModifyTrojanizeModel",
-           "DockerImageInfoModifyUserModel")
+           "DockerImageInfoModifyUserModel",
+           "DockerImageInfoModifyEntryPointModel")

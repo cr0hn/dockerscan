@@ -37,11 +37,34 @@ def launch_dockerscan_image_modify_user_in_console(
         log.console("Starting analyzing docker image...")
         log.console("Selected image: '{}'".format(
             os.path.basename(config.image_path)))
+        log.console("Updating to the new user: '{}'".format(
+            os.path.basename(config.new_user)))
 
         run_image_modify_user_dockerscan(config)
 
-        log.console("Image troyanized successful")
+        log.console("User updated successful")
+
+
+def launch_dockerscan_image_modify_entrypoint_in_console(
+        config: DockerImageInfoModifyEntryPointModel):
+    """Launch in console mode"""
+
+    log.setLevel(get_log_level(config.verbosity))
+
+    with run_in_console(config.debug):
+
+        log.console("Starting analyzing docker image...")
+        log.console("Selected image: '{}'".format(
+            os.path.basename(config.image_path)))
+        log.console("Updating to the new entry-point: '{}'".format(
+            os.path.basename(config.new_entry_point)))
+
+        run_image_modify_entry_point_dockerscan(config)
+
+        log.console("Entry-point updated successful")
 
 
 __all__ = ("launch_dockerscan_image_modify_trojanize_in_console",
-           "launch_dockerscan_image_modify_user_in_console")
+           "launch_dockerscan_image_modify_user_in_console",
+           "run_image_modify_entry_point_dockerscan",
+           "launch_dockerscan_image_modify_entrypoint_in_console")
