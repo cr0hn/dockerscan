@@ -122,38 +122,49 @@ def get_remote_registry_info(target: str) -> Union[Set,
                                      format(target))
 
 
-def display_results_console(results: dict, log):
-    for prop, value in results.__dict__.items():
-        # Do not put: "not value" because it will ignore entries
-        # with value "False", and we want theres values
-        if prop.startswith("_") or (not value and type(value) is not bool):
-            continue
+def display_results_console(results: Union[dict, list], log, start_padding=0):
 
-        pretty_prop = prop.capitalize().replace("_", " ")
+    # Check if results is and object / class or a basic type:
+    if str(type(results))[8:].strip().startswith("dockerscan"):
+        results = {x: y for x, y in results.__dict__.items()
+                   if not x.startswith("_") and y and type(y) is not bool}
 
-        # List will be displayed different
-        if type(value) in (list, set):
-            log.console("  - {}:".format(pretty_prop))
+    prefix_symbols = ["-", ">", "+", "_", "\\"]
 
-            for p in value:
-                log.console("      > {}".format(p))
+    padding = "{}{} ".format(" " * (0 if start_padding == 0
+                                    else start_padding * 2),
+                             prefix_symbols[start_padding],)
+    new_padding = start_padding + 1
 
-        # Display dictionaries
-        elif type(value) in (defaultdict, dict):
-            log.console("  - {}:".format(pretty_prop))
+    if isinstance(results, dict):
+        for prop, value in results.items():
+            # Do not put: "not value" because it will ignore entries
+            # with value "False", and we want theres values
+            pretty_prop = prop.capitalize().replace("_", " ")
 
-            for p, v in value.items():
-                if hasattr(v, "add"):
-                    v = ",".join(v)
-                log.console("      > {} = {}".format(p, v))
+            # List will be displayed different
+            if type(value) not in (bytes, str):
+                log.console("{}{}:".format(padding,
+                                           pretty_prop))
 
-        # Plain properties
-        else:
-            if prop == "cmd":
-                log.console("  - {}".format(pretty_prop))
-                log.console("      > '{}'".format(value))
+                display_results_console(value,
+                                        log,
+                                        new_padding)
+            # Plain properties
             else:
-                log.console("  - {} = {}".format(pretty_prop, value))
+                log.console("{}{} = {}".format(padding,
+                                               pretty_prop,
+                                               value))
+
+    elif isinstance(results, (list, set, tuple)):
+        for p in results:
+            if isinstance(p, (str, bytes)):
+                log.console("{}{}".format(padding,
+                                          p))
+            else:
+                # log.console("{}  - {}:".format(p,
+                #                                padding))
+                display_results_console(p, log, new_padding)
 
 
 __all__ = ("check_console_input_config", "get_remote_registry_info",
