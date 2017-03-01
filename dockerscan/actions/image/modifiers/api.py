@@ -148,12 +148,12 @@ def run_image_modify_entry_point_dockerscan(
         #
         # Add the new file to the image
         #
+        log.info(" > Adding new data to the image")
         add_binary_path = os.path.abspath(add_binary_path)
 
-        with open_docker_image(image_path) as (img, _, _, _):
-            replace_or_append_file_to_image(add_binary_path,
-                                            new_entry_point,
-                                            img)
+        add_new_file_to_image(add_binary_path,
+                              new_entry_point,
+                              image_path)
 
     with modify_docker_image_metadata(image_path,
                                       output_docker_image) as (last_layer_json,

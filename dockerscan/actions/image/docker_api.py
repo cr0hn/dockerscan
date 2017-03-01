@@ -295,7 +295,7 @@ def read_file_from_image(img: tarfile.TarFile,
         return img.extractfile(file_path).read()
 
 
-def replace_or_append_file_to_image(file_to_replace: str,
+def replace_or_append_file_to_layer(file_to_replace: str,
                                     content_or_path: bytes,
                                     img: tarfile.TarFile):
     # Is content or path?
@@ -311,9 +311,49 @@ def replace_or_append_file_to_image(file_to_replace: str,
         img.add(content_or_path, file_to_replace)
 
 
+def add_new_file_to_image(file_to_append: str,
+                          path_in_image: str,
+                          image_path: str):
+    file_to_append = os.path.abspath(file_to_append)
+
+    with tempfile.NamedTemporaryFile() as tmp_out_image:
+
+        with open_docker_image(image_path) as (
+                img, top_layer, _, manifest):
+
+            # 1 - Get the last layer in manifest
+            old_layer_digest = get_last_image_layer(manifest)
+
+            with extract_layer_in_tmp_dir(img, old_layer_digest) as d:
+
+                # 2 - Copying new info
+                copy_file_to_image_folder(d,
+                                          file_to_append,
+                                          path_in_image)
+
+                new_layer_path, new_layer_digest = \
+                    build_image_layer_from_dir("new_layer.tar", d)
+
+                # 3 - Updating the manifest
+                new_manifest = build_manifest_with_new_layer(manifest,
+                                                             old_layer_digest,
+                                                             new_layer_digest)
+
+                # 4 - Create new docker image
+                create_new_docker_image(new_manifest,
+                                        tmp_out_image.name,
+                                        img,
+                                        old_layer_digest,
+                                        new_layer_path,
+                                        new_layer_digest)
+
+        # Replace old image with the new
+        shutil.copy(tmp_out_image.name,
+                    image_path)
+
+
 def _update_json_values(update_points: list,
-                        values: Union[dict, str],
-                        end_point: str):
+                        values: Union[dict, str]):
 
     for point in update_points:
         if isinstance(values, dict):
@@ -397,7 +437,7 @@ def create_new_docker_image(manifest: dict,
             if f.name == "manifest.json":
                 # Dump Manifest to JSON
                 new_manifest_json = json.dumps(manifest).encode()
-                replace_or_append_file_to_image("manifest.json",
+                replace_or_append_file_to_layer("manifest.json",
                                                 new_manifest_json,
                                                 s)
 
@@ -406,18 +446,16 @@ def create_new_docker_image(manifest: dict,
             #
             elif old_layer_digest in f.name:
                 # Skip for old layer.tar file
-                if "layer" in f.name:
-                    continue
+                if f.name == "{}/layer.tar".format(old_layer_digest) or \
+                        "/" not in f.name:
 
-                # Add the layer.tar
-                if f.name == old_layer_digest:
                     log.debug(
                         "    _> Replacing layer {} by {}".format(
                             f.name,
                             new_layer_digest
                         ))
 
-                    replace_or_append_file_to_image("{}/layer.tar".format(
+                    replace_or_append_file_to_layer("{}/layer.tar".format(
                         new_layer_digest),
                         new_layer_path,
                         s)
@@ -425,7 +463,7 @@ def create_new_docker_image(manifest: dict,
                     #
                     # Extra files: "json" and "VERSION"
                     #
-                    c = read_file_from_image(img, f.name, autoclose=False)
+                    c = read_file_from_image(img, f.name)
 
                     if "json" in f.name:
                         # Modify the JSON content to add the new
@@ -436,7 +474,7 @@ def create_new_docker_image(manifest: dict,
                             c = c.decode().replace(old_layer_digest,
                                                    new_layer_digest).encode()
 
-                    replace_or_append_file_to_image("{}/{}".format(
+                    replace_or_append_file_to_layer("{}/{}".format(
                         new_layer_digest,
                         os.path.basename(f.name)), c, s)
 
@@ -455,7 +493,7 @@ def create_new_docker_image(manifest: dict,
 
                 new_c = json.dumps(j).encode()
 
-                replace_or_append_file_to_image(f.name, new_c, s)
+                replace_or_append_file_to_layer(f.name, new_c, s)
 
             elif ".json" in f.name and "/" not in f.name:
                 c = read_file_from_image(img, f, autoclose=False)
@@ -472,7 +510,7 @@ def create_new_docker_image(manifest: dict,
 
                 new_c = json.dumps(j).encode()
 
-                replace_or_append_file_to_image(f.name, new_c, s)
+                replace_or_append_file_to_layer(f.name, new_c, s)
 
             # Add the rest of files / dirs
             else:
@@ -662,5 +700,6 @@ __all__ = ("open_docker_image", "extract_layer_in_tmp_dir",
            "modify_docker_image_metadata",
            "get_entry_point_from_image_metadata",
            "resolve_text_var_from_metadata_vars",
-           "replace_or_append_file_to_image",
-           "update_layer_entry_point")
+           "replace_or_append_file_to_layer",
+           "update_layer_entry_point",
+           "add_new_file_to_image")
