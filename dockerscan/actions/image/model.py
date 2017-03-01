@@ -5,18 +5,15 @@ from dockerscan import SharedConfig, String
 
 class DockerImageInfoModel(SharedConfig):
     image_path = String()
-    image_repository = String(default="")
 
 
 class DockerImageAnalyzeModel(SharedConfig):
     image_path = String()
-    image_repository = String(default="")
 
 
 class DockerImageExtractModel(SharedConfig):
     image_path = String()
     extract_path = String()
-    image_repository = String(default="")
 
 
 class DockerImageInfo:

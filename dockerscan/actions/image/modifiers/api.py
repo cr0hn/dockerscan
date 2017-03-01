@@ -1,7 +1,9 @@
 import json
 import os.path
 import logging
+from contextlib import contextmanager
 
+from dockerscan import DockerscanReturnContextManager
 from .model import *
 from ..docker_api import *
 
@@ -34,8 +36,7 @@ def run_image_modify_trojanize_dockerscan(
 
     # 1 - Get layers info
     log.debug(" > Opening docker file")
-    with open_docker_image(image_path,
-                           config.image_repository) as (
+    with open_docker_image(image_path) as (
             img, top_layer, _, manifest):
 
         # 2 - Get the last layer in manifest
@@ -76,7 +77,7 @@ def run_image_modify_trojanize_dockerscan(
                 "REMOTE_PORT": config.remote_port
             }
 
-            new_json_data = update_layer_environment_vars(
+            new_json_data_last_layer = update_layer_environment_vars(
                 json_info_last_layer,
                 new_env_vars
             )
@@ -95,7 +96,36 @@ def run_image_modify_trojanize_dockerscan(
                                     old_layer_digest,
                                     new_layer_path,
                                     new_layer_digest,
-                                    new_json_data,
+                                    new_json_data_last_layer,
                                     new_json_info_root_layer)
 
-__all__ = ("run_image_modify_trojanize_dockerscan",)
+
+def run_image_modify_user_dockerscan(
+        config: DockerImageInfoModifyUserModel):
+
+    assert isinstance(config, DockerImageInfoModifyUserModel)
+
+    output_docker_image = config.output_image
+    image_path = config.image_path
+
+    if not output_docker_image:
+        output_docker_image = os.path.basename(config.image_path)
+
+    if not output_docker_image.endswith("tar"):
+        output_docker_image += ".tar"
+
+    with modify_docker_image_metadata(image_path,
+                                      output_docker_image) as (last_layer_json,
+                                                               root_layer_json):
+
+        new_json_data_last_layer = update_layer_user(last_layer_json,
+                                                     config.new_user)
+        new_json_info_root_layer = update_layer_user(root_layer_json,
+                                                     config.new_user)
+
+        raise DockerscanReturnContextManager(new_json_data_last_layer,
+                                             new_json_info_root_layer)
+
+
+__all__ = ("run_image_modify_trojanize_dockerscan",
+           "run_image_modify_user_dockerscan")

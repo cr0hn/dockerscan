@@ -12,8 +12,7 @@ def run_image_info_dockerscan(config: DockerImageInfoModel) -> DockerImageInfo:
 
     # Get docker info
     docker_info = DockerImageInfo()
-    for layer in get_docker_image_layers(config.image_path,
-                                         config.image_repository):
+    for layer in get_docker_image_layers(config.image_path):
         docker_info.add_layer_info(layer)
 
     return docker_info
@@ -23,8 +22,7 @@ def run_image_extract_dockerscan(config: DockerImageExtractModel):
     assert isinstance(config, DockerImageExtractModel)
 
     extract_docker_image(config.image_path,
-                         config.extract_path,
-                         config.image_repository)
+                         config.extract_path)
 
 
 def run_image_analyze_dockerscan(config: DockerImageAnalyzeModel):
@@ -36,16 +34,14 @@ def run_image_analyze_dockerscan(config: DockerImageAnalyzeModel):
         docker_info = DockerImageInfo()
 
         try:
-            for layer in get_docker_image_layers(config.image_path,
-                                                 config.image_repository):
+            for layer in get_docker_image_layers(config.image_path):
                 docker_info.add_layer_info(layer)
         except KeyError as e:
             raise DockerscanError(e)
 
         # Extract docker data
         extract_docker_image(config.image_path,
-                             tmp_dir,
-                             config.image_repository)
+                             tmp_dir)
 
         # Run the analysis
         analysis_results = analyze_docker_image(tmp_dir, docker_info)

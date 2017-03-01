@@ -27,16 +27,25 @@ def modify(ctx, **kwargs):
               help="Remote port where to connect to on shell starts")
 @click.option("--output", "-o", "output_image")
 @click.option("--custom-shell", "-S", "custom_shell")
-@click.option("--image-repository",
-              "-r",
-              "image_repository",
-              help="in 'my_user/nginx:latest -> Repository is 'my_user''")
 def trojanize(ctx, **kwargs):
     config = DockerImageInfoModifyTrojanizeModel(**ctx.obj, **kwargs)
 
     # Check if valid
     if check_console_input_config(config):
         launch_dockerscan_image_modify_trojanize_in_console(config)
+
+
+@modify.command(help="change docker image global user")
+@click.pass_context
+@click.argument("image_path")
+@click.argument("new_user")
+@click.option("--output", "-o", "output_image")
+def user(ctx, **kwargs):
+    config = DockerImageInfoModifyUserModel(**ctx.obj, **kwargs)
+
+    # Check if valid
+    if check_console_input_config(config):
+        launch_dockerscan_image_modify_user_in_console(config)
 
 #
 # - Inject binary

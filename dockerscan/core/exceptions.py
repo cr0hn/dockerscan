@@ -18,5 +18,9 @@ class DockerscanNotExitsError(TypeError):
     pass
 
 
+class DockerscanReturnContextManager(Exception):
+    pass
+
 __all__ = ("DockerscanError", "DockerscanValueError", "DockerscanTypeError",
-           "DockerscanTimeoutError", "DockerscanNotExitsError")
+           "DockerscanTimeoutError", "DockerscanNotExitsError",
+           "DockerscanReturnContextManager")

@@ -22,7 +22,7 @@ try:
 except ImportError:
     import json
 
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Union
 from contextlib import closing, contextmanager
 from dockerscan import DockerscanNotExitsError, DockerscanError
 
@@ -64,8 +64,7 @@ def _find_layers(img, id):
 # Public API
 # --------------------------------------------------------------------------
 @contextmanager
-def open_docker_image(image_path: str,
-                      image_repository: str = ""):
+def open_docker_image(image_path: str):
     """
     This function is a context manager that allow to open a docker image and
     return their layers and the layers metadata.
@@ -86,7 +85,7 @@ def open_docker_image(image_path: str,
     tmp_image = os.path.basename(image_path)
 
     if ":" in tmp_image:
-        image, tag = tmp_image.split(":", maxsplit=1)
+        image, tag, *_ = tmp_image.split(":", maxsplit=1)
     else:
         image, tag = tmp_image, "latest"
 
@@ -94,21 +93,17 @@ def open_docker_image(image_path: str,
     image_layers_tags = {}
 
     with tarfile.open(image_path, "r") as img:
-        manifest_file = img.extractfile('manifest.json')
-        manifest_content = manifest_file.read()
+
+        # read the manifest
+        manifest_content = read_file_from_image(img, "manifest.json")
         if hasattr(manifest_content, "decode"):
             manifest_content = manifest_content.decode()
         manifest_content = json.loads(manifest_content)
 
-        repos = img.extractfile('repositories')
-
-        repo_content = repos.read()
-        # If data are bytes, transform to str. JSON only accept str.
+        # Read the repo info
+        repo_content = read_file_from_image(img, "repositories")
         if hasattr(repo_content, "decode"):
             repo_content = repo_content.decode()
-
-        # Clean repo content
-        repo_content = repo_content.replace("\n", "").replace("\r", "")
 
         repos_info = json.loads(repo_content)
 
@@ -118,18 +113,10 @@ def open_docker_image(image_path: str,
         try:
             top_layers = repos_info[image][tag]
         except KeyError:
-            try:
-                image_and_repo = "{}/{}".format(image_repository,
-                                                image)
+            image = list(image_layers_tags.keys())[0]
+            tag = list(repos_info[image].keys())[0]
 
-                top_layers = repos_info[image_and_repo][tag]
-            except KeyError:
-                raise Exception(
-                    'failed to find image {image} with tag {tag}'
-                    ' (Command: "docker pull {image}:{tag}" will report '
-                    'error). Try indicating the respository (option "-r") and'
-                    'try again.'.format(image=image,
-                                        tag=tag))
+            top_layers = repos_info[image][tag]
 
         yield img, top_layers, image_layers_tags, manifest_content
 
@@ -141,11 +128,10 @@ def extract_layer_in_tmp_dir(img: tarfile.TarFile,
     This context manager allow to extract a selected layer into a temporal
     directory and yield the directory path
 
-    >>> with open_docker_image(image_path,
-                               image_repository) as (img,
-                                                     top_layer,
-                                                     _,
-                                                     manifest):
+    >>> with open_docker_image(image_path) as (img,
+                                               top_layer,
+                                               _,
+                                               manifest):
             last_layer_digest = get_last_image_layer(manifest)
             with extract_layer_in_tmp_dir(img, last_layer_digest) as d:
                 print(d)
@@ -164,6 +150,86 @@ def get_last_image_layer(manifest: Dict) -> str:
 
     # Layers are ordered in inverse order
     return get_layers_ids_from_manifest(manifest)[-1]
+
+
+@contextmanager
+def modify_docker_image_metadata(image_path: str,
+                                 output_docker_image: str):
+    """
+    This context manager allow to modify the image metadata
+
+    This context manager expect a DockerscanReturnContextManager() exception to
+     get the wanted information from context excution.
+
+    This exception raise must have 2 parameters:
+    - Last layer JSON metadata content
+    - roote layer JSON metadata content
+
+    >>> with modify_docker_image_metadata(image_path,
+                                          output_docker_image) as (last_layer_json,
+                                                                   root_layer_json):
+
+            new_json_data_last_layer = update_layer_user(last_layer_json,
+                                                         config.new_user)
+            new_json_info_root_layer = update_layer_user(root_layer_json,
+                                                         config.new_user)
+
+            raise DockerscanReturnContextManager(new_json_data_last_layer,
+                                                 new_json_info_root_layer)
+    """
+
+    # 1 - Get layers info
+    log.debug(" > Opening docker file")
+    with open_docker_image(image_path) as (
+            img, top_layer, _, manifest):
+
+        # 2 - Get the last layer in manifest
+        old_layer_digest = get_last_image_layer(manifest)
+        log.debug(" > Last layer: {}".format(old_layer_digest))
+
+        with extract_layer_in_tmp_dir(img, old_layer_digest) as d:
+
+            # Start trojanizing
+            log.info(" > Starting trojaning process")
+
+            new_layer_path, new_layer_digest = \
+                build_image_layer_from_dir("new_layer.tar", d)
+
+            # 5 - Updating the manifest
+            new_manifest = build_manifest_with_new_layer(manifest,
+                                                         old_layer_digest,
+                                                         new_layer_digest)
+
+            # Add new enviroment vars with LD_PRELOAD AND REMOTE ADDR
+            json_info_last_layer = read_file_from_image(img,
+                                                        "{}/json".format(
+                                                            old_layer_digest))
+
+            json_info_last_layer = json.loads(json_info_last_layer.decode())
+
+            _, json_info_root_layer = get_root_json_from_image(img)
+
+            new_json_data_last_layer, new_json_info_root_layer = None, None
+
+            try:
+                yield json_info_last_layer, json_info_root_layer
+            except Exception as e:
+                if e.__class__.__name__ == "DockerscanReturnContextManager":
+                    new_json_data_last_layer, new_json_info_root_layer = e.args
+
+            if new_json_data_last_layer is None:
+                return
+
+            # 6 - Create new docker image
+            log.info(" > Creating new docker image")
+            create_new_docker_image(new_manifest,
+                                    output_docker_image,
+                                    img,
+                                    old_layer_digest,
+                                    new_layer_path,
+                                    new_layer_digest,
+                                    new_json_data_last_layer,
+                                    new_json_info_root_layer)
 
 
 def build_image_layer_from_dir(layer_name: str,
@@ -244,6 +310,23 @@ def replace_file_in_image(file_to_replace: str,
         img.add(content_or_path, file_to_replace)
 
 
+def _update_json_values(update_points: list,
+                        values: Union[dict, str],
+                        end_point: str):
+
+    for point in update_points:
+        if isinstance(values, dict):
+            for var_name, var_value in values.items():
+                point.append("{}={}".format(
+                    var_name,
+                    var_value
+                ))
+        elif isinstance(values, (str, bytes)):
+            if hasattr(values, "decode"):
+                values = values.decode()
+            setattr(point, values)
+
+
 def update_layer_environment_vars(json_info: dict,
                                   new_environment_vars: dict) -> dict:
 
@@ -260,6 +343,22 @@ def update_layer_environment_vars(json_info: dict,
                 var_name,
                 var_value
             ))
+
+    return new_json_info
+
+
+def update_layer_user(json_info: dict,
+                      new_user: str) -> dict:
+
+    new_json_info = json_info.copy()
+
+    update_points = [
+        new_json_info["config"],
+        new_json_info["container_config"]
+    ]
+
+    for point in update_points:
+        point["User"] = new_user
 
     return new_json_info
 
@@ -327,6 +426,20 @@ def create_new_docker_image(manifest: dict,
             #
             # Root .json file with the global info
             #
+            elif "repositories" in f.name:
+                c = read_file_from_image(img, f, autoclose=False)
+                j = json.loads(c.decode())
+
+                image = list(j.keys())[0]
+                tag = list(j[image].keys())[0]
+
+                # Update the latest layer
+                j[image][tag] = new_layer_digest
+
+                new_c = json.dumps(j).encode()
+
+                replace_file_in_image(f.name, new_c, s)
+
             elif ".json" in f.name and "/" not in f.name:
                 c = read_file_from_image(img, f, autoclose=False)
 
@@ -431,15 +544,13 @@ def extract_docker_layer(img: tarfile.TarFile,
 
 
 def extract_docker_image(image_path: str,
-                         extract_path: str,
-                         image_repository: str):
+                         extract_path: str):
     """Extract a docker image content to a path location"""
     if not os.path.exists(image_path):
         raise DockerscanNotExitsError("Docker image not exits at path: {}". \
                                       format(image_path))
 
-    with open_docker_image(image_path,
-                           image_repository) as (img, first_layer, _, _):
+    with open_docker_image(image_path) as (img, first_layer, _, _):
         layers = list(_find_layers(img, first_layer))
 
         if not os.path.isdir(extract_path):
@@ -451,16 +562,14 @@ def extract_docker_image(image_path: str,
             extract_docker_layer(img, layer_id, extract_path)
 
 
-def get_docker_image_layers(image_path: str,
-                            image_repository: str) -> dict:
+def get_docker_image_layers(image_path: str) -> dict:
     """
     This function get a docker image layers and yield them
 
-    >>> for x in get_docker_image_layers("/path/image.tar", "repo"):
+    >>> for x in get_docker_image_layers("/path/image.tar"):
             print(x)
     """
-    with open_docker_image(image_path,
-                           image_repository) as (img, top_layers, _, _):
+    with open_docker_image(image_path) as (img, top_layers, _, _):
         layers_meta = _find_metadata_in_layers(img, top_layers)
 
         for layer in layers_meta:
@@ -475,4 +584,5 @@ __all__ = ("open_docker_image", "extract_layer_in_tmp_dir",
            "create_new_docker_image",
            "extract_docker_layer", "get_layers_ids_from_manifest",
            "update_layer_environment_vars", "get_root_json_from_image",
-           "read_file_from_image")
+           "read_file_from_image", "update_layer_user",
+           "modify_docker_image_metadata")
