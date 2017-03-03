@@ -88,3 +88,5 @@ ENV/
 # Rope project settings
 .ropeproject
 docker_images/
+/dockerscan/nginx-trojanized/
+/dockerscan/debian-base/

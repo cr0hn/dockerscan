@@ -30,19 +30,10 @@ A Docker analysis tools
 Very quick install
 ==================
 
-**Install from Pypi**
-
 .. code-block:: bash
 
+    > python3.5 -m pip install -U pip
     > python3.5 -m pip install dockerscan
-
-**From source**
-
-.. code-block:: bash
-
-    > git clone https://github.com/cr0hn/dockerscan.git dockerscan
-    > cd dockerscan
-    > python3.5 setup.py install
 
 Show options:
 
@@ -50,10 +41,33 @@ Show options:
 
     > dockerscan -h
 
+Available actions
+=================
+
+Currently Docker Scan support these actions:
+
+- Registry
+
+    - Delete: Delete remote image / tag
+    - Info: Show info from remote registry
+    - Push: Push and image (like Docker client)
+    - Upload: Upload random a file
+
+- Image
+
+    - Analyze: Looking for sensitive information in a Docker image.
+    - Extract: extract a docker image
+    - info: Get a image meta information
+    - modify:
+
+        - entrypoint: change the entrypoint in a docker
+        - **trojanize**: inject a reverser shell into a docker image
+        - user: change running user in a docker image
+
 Documentation
 =============
 
-Go to documentation site: https://dockerscan.readthedocs.org/
+Documentation is still in process... sorry!
 
 Contributing
 ============
@@ -67,5 +81,5 @@ Also you can read the `TODO <https://github.com/cr0hn/dockerscan/blob/master/TOD
 License
 =======
 
-This project is distributed under `MIT license <https://github.com/cr0hn/dockerscan/blob/master/LICENSE>`_
+This project is distributed under `BSD license <https://github.com/cr0hn/dockerscan/blob/master/LICENSE>`_
 

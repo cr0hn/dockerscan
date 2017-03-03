@@ -87,11 +87,9 @@ setup(
     install_requires=required,
     url='https://github.com/cr0hn/dockerscan',
     license='BSD',
-    author='Daniel Garcia (cr0hn) / Roberto Munoz',
+    author='Daniel Garcia (cr0hn) / Roberto Munoz (robskye)',
     author_email='cr0hn@cr0hn.com',
-    # package_dir={'': 'dockerscan'},
-    packages=find_packages(exclude=["test", "doc"]),
-    # packages=find_packages("dockerscan", exclude=["test", "doc"]),
+    packages=find_packages(),
     include_package_data=True,
     extras_require={
         'performance':  required_performance
