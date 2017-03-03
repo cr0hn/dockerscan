@@ -69,6 +69,10 @@ Documentation
 
 Documentation is still in process... sorry!
 
+For the moment only have the Slides os presentation of RootedCON Spain. The conference where Docker Scan was presented:
+
+https://www.slideshare.net/secret/fxVqD2iXqanOCX
+
 Contributing
 ============
 
