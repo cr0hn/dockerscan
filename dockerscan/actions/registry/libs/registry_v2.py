@@ -120,6 +120,10 @@ def delete_image_v2(registry: str,
     # Getting remote digest for the tag
     digest = _get_digest_by_tag(registry, remote_image_name, tag)
 
+    if not digest:
+        raise DockerscanError("> Can't obtain digest reference for selected "
+                              "image / tag")
+
     try:
         if digest:
             # If digest found -> remote image is not a regex. Then remove it

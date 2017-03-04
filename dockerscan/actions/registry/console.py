@@ -83,11 +83,9 @@ def launch_dockerscan_analyze_delete_in_console(config: DockerAnalyzePushModel):
             log.console("Selected registry: '{}'".format(
                 sanitize_url(config.registry)))
 
-            results = run_analyze_delete_dockerscan(config)
+            run_analyze_delete_dockerscan(config)
 
-            log.console("Deleted images:")
-            for r in results:
-                log.console("  > {}".format(r))
+            log.console("Deleted images")
 
             # Show results
             log.console("Image uploaded")

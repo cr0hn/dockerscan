@@ -143,7 +143,7 @@ def display_results_console(results: Union[dict, list], log, start_padding=0):
             pretty_prop = prop.capitalize().replace("_", " ")
 
             # List will be displayed different
-            if type(value) not in (bytes, str):
+            if type(value) not in (bytes, str, int, float, bool):
                 log.console("{}{}:".format(padding,
                                            pretty_prop))
 

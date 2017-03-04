@@ -1,4 +1,4 @@
-include LICENSE CHANGELOG README.rst requirements.txt requirements-performance.txt
+include LICENSE CHANGELOG README.rst requirements.txt requirements-performance.txt dockerscan/actions/image/modifiers/shells/reverse_shell.so
 
 recursive-exclude * __pycache__
 recursive-exclude * *.pyc
@@ -7,7 +7,6 @@ recursive-exclude * *.orig
 recursive-exclude * .DS_Store
 global-exclude __pycache__/*
 global-exclude .deps/*
-global-exclude *.so
 global-exclude *.pyd
 global-exclude *.pyc
 global-exclude .git*
