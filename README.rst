@@ -56,6 +56,11 @@ Currently Docker Scan support these actions:
 - Image
 
     - Analyze: Looking for sensitive information in a Docker image.
+
+        - Looking for passwords in environment vars.
+        - Try to find any URL / IP in the environment vars.
+        - Try to deduce the user using internally to run the software. This is not trivial. If the entry point is a .sh file. Read the file and try to find call to sudo-like: “sudo”, “gosu”, “sh -u”… And report the user found.
+
     - Extract: extract a docker image
     - info: Get a image meta information
     - modify:
