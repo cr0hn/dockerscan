@@ -1,7 +1,7 @@
 dockerscan
 ==========
 
-*dockerscan: A Docker analysis tools*
+*dockerscan: A Docker analysis & hacking tools*
 
 .. image::  https://github.com/cr0hn/dockerscan/raw/master/doc/source/_static/dockerscan-logo.png
     :height: 64px
@@ -68,6 +68,13 @@ Currently Docker Scan support these actions:
         - entrypoint: change the entrypoint in a docker
         - **trojanize**: inject a reverser shell into a docker image
         - user: change running user in a docker image
+
+What's the difference from Clair or Docker Cloud?
+=================================================
+
+The purpose of Dockerscan is a different. It's focussed in the attack fade. 
+
+Although Dockescan has some functionalities to detect vulnerabilities into Docker images and Docker registries, the objetive is the attack. 
 
 Documentation
 =============
