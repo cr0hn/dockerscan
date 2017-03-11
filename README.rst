@@ -85,7 +85,7 @@ For the moment only have the Slides os presentation of RootedCON Spain. The conf
 
 https://www.slideshare.net/secret/fxVqD2iXqanOCX
 
-Or you can watch it in video format:
+Or you can watch it in video format (recommended):
 
 https://youtu.be/OwX1e4y4JMk
 
