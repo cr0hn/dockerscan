@@ -74,7 +74,7 @@ What's the difference from Clair or Docker Cloud?
 
 The purpose of Dockerscan is a different. It's focussed in the attack fade. 
 
-Although Dockescan has some functionalities to detect vulnerabilities into Docker images and Docker registries, the objetive is the attack. 
+Although Dockescan has some functionalities to detect vulnerabilities into Docker images and Docker registries, the objective is the attack. 
 
 Documentation
 =============
