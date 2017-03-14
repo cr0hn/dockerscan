@@ -89,6 +89,10 @@ Or you can watch it in video format (recommended):
 
 https://youtu.be/OwX1e4y4JMk
 
+Also, you can watch a dockerscan usage demo:
+
+https://youtu.be/UvtBGIb3E3o
+
 Contributing
 ============
 
