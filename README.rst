@@ -1,7 +1,7 @@
 dockerscan
 ==========
 
-*dockerscan: A Docker analysis & hacking tool*
+*dockerscan: A Docker analysis & hacking tools*
 
 .. image::  https://github.com/cr0hn/dockerscan/raw/master/doc/source/_static/dockerscan-logo.png
     :height: 64px
@@ -25,7 +25,7 @@ dockerscan
 What's dockerscan
 =================
 
-A Docker analysis tool
+A Docker analysis tools
 
 Very quick install
 ==================
