@@ -100,8 +100,6 @@ Any collaboration is welcome!
 
 There are many tasks to do. You can check the `Issues <https://github.com/cr0hn/dockerscan/issues/>`_ and send us a Pull Request.
 
-Also you can read the `TODO <https://github.com/cr0hn/dockerscan/blob/master/TODO.md>`_ file.
-
 License
 =======
 
