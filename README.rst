@@ -50,8 +50,8 @@ Currently Docker Scan support these actions:
 
     - Delete: Delete remote image / tag
     - Info: Show info from remote registry
-    - Push: Push and image (like Docker client)
-    - Upload: Upload random a file
+    - Push: Push an image (like Docker client)
+    - Upload: Upload a random file
 
 - Image
 
@@ -59,11 +59,11 @@ Currently Docker Scan support these actions:
 
         - Looking for passwords in environment vars.
         - Try to find any URL / IP in the environment vars.
-        - Try to deduce the user using internally to run the software. This is not trivial. If the entry point is a .sh file. Read the file and try to find call to sudo-like: “sudo”, “gosu”, “sh -u”… And report the user found.
+        - Try to deduce the user used internally to run the software. This is not trivial. If the entry point is a .sh file. Read the file and try to find call to sudo-like: “sudo”, “gosu”, “sh -u”… And report the user found.
 
     - Extract: extract a docker image
-    - info: Get a image meta information
-    - modify:
+    - Info: Get a image meta information
+    - Modify:
 
         - entrypoint: change the entrypoint in a docker
         - **trojanize**: inject a reverser shell into a docker image
@@ -72,16 +72,16 @@ Currently Docker Scan support these actions:
 What's the difference from Clair or Docker Cloud?
 =================================================
 
-The purpose of Dockerscan is a different. It's focussed in the attack fade. 
+The purpose of Dockerscan is different. It's focussed in the attack phase. 
 
-Although Dockescan has some functionalities to detect vulnerabilities into Docker images and Docker registries, the objective is the attack. 
+Although Dockescan has some functionalities to detect vulnerabilities in Docker images and Docker registries, the objective is the attack. 
 
 Documentation
 =============
 
-Documentation is still in process... sorry!
+Documentation is still in progress... sorry!
 
-For the moment only have the Slides os presentation of RootedCON Spain. The conference where Docker Scan was presented:
+For the moment we only have the slides presented at RootedCON Spain, the conference where Docker Scan was presented:
 
 https://www.slideshare.net/secret/fxVqD2iXqanOCX
 
@@ -94,7 +94,7 @@ Contributing
 
 Any collaboration is welcome!
 
-There're many tasks to do.You can check the `Issues <https://github.com/cr0hn/dockerscan/issues/>`_ and send us a Pull Request.
+There are many tasks to do. You can check the `Issues <https://github.com/cr0hn/dockerscan/issues/>`_ and send us a Pull Request.
 
 Also you can read the `TODO <https://github.com/cr0hn/dockerscan/blob/master/TODO.md>`_ file.
 
