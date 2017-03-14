@@ -36,7 +36,7 @@ def extract(ctx, **kwargs):
         launch_dockerscan_image_extract_in_console(config)
 
 
-@image.command(help="looking for sensitive date into a docker image")
+@image.command(help="looking for sensitive data from docker image")
 @click.pass_context
 @click.argument("image_path")
 def analyze(ctx, **kwargs):
