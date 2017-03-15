@@ -1,4 +1,5 @@
 import ssl
+import socket
 import asyncio
 import logging
 import ipaddress
@@ -14,6 +15,31 @@ log = logging.getLogger("dockerscan")
 # Helpers
 # --------------------------------------------------------------------------
 def _expand_ips(raw_target: str) -> Set[str]:
+    def _expand_ip(ip: str) -> list:
+        if "/" in target:
+            try:
+                return [str(x) for x in ipaddress.ip_network(
+                    target,
+                    strict=False).hosts()]
+            except ValueError:
+                # If this error es reach -> target is a domain
+                _domain, _subnet, *_ = target.split("/", maxsplit=2)
+                new_target = "{}/{}".format(socket.gethostbyname(_domain),
+                                            _subnet)
+
+                return [str(x) for x in ipaddress.ip_network(
+                    new_target,
+                    strict=False).hosts()]
+        else:
+            try:
+                return [str(ipaddress.ip_address(target))]
+            except ValueError:
+                new_target = socket.gethostbyname(target)
+
+                return [str(x) for x in ipaddress.ip_network(
+                    new_target,
+                    strict=False).hosts()]
+
     if "-" in raw_target:
         targets = raw_target.split("-")
     else:
@@ -24,12 +50,7 @@ def _expand_ips(raw_target: str) -> Set[str]:
     # Expand IPs
     for target in targets:
         # Extract IP address
-        if "/" in target:
-            ip_address_expanded.update(
-                (str(x) for x in ipaddress.ip_network(target,
-                                                      strict=False).hosts()))
-        else:
-            ip_address_expanded.add(str(ipaddress.ip_address(target)))
+            ip_address_expanded.update(_expand_ip(target))
 
     return ip_address_expanded
 
@@ -148,7 +169,7 @@ async def _check_ports(target: str,
             return
 
         if b"registry/2.0" in data or \
-                b"Docker-Distribution-Api-Version" in data:
+                        b"Docker-Distribution-Api-Version" in data:
 
             content = data.lower()
 
