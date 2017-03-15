@@ -1,7 +1,7 @@
 dockerscan
 ==========
 
-*dockerscan: A Docker analysis tools*
+*dockerscan: A Docker analysis & hacking tools*
 
 .. image::  https://github.com/cr0hn/dockerscan/raw/master/doc/source/_static/dockerscan-logo.png
     :height: 64px
@@ -17,7 +17,7 @@ dockerscan
 +----------------+--------------------------------------------------+
 |Documentation   | http://dockerscan.readthedocs.org                |
 +----------------+--------------------------------------------------+
-|Last Version    | 1.0.0a1                                          |
+|Last Version    | 1.0.0-Alpha-01                                   |
 +----------------+--------------------------------------------------+
 |Python versions | 3.5 or above                                     |
 +----------------+--------------------------------------------------+
@@ -52,8 +52,8 @@ Currently Docker Scan support these actions:
 
     - Delete: Delete remote image / tag
     - Info: Show info from remote registry
-    - Push: Push and image (like Docker client)
-    - Upload: Upload random a file
+    - Push: Push an image (like Docker client)
+    - Upload: Upload a random file
 
 - Image
 
@@ -61,33 +61,46 @@ Currently Docker Scan support these actions:
 
         - Looking for passwords in environment vars.
         - Try to find any URL / IP in the environment vars.
-        - Try to deduce the user using internally to run the software. This is not trivial. If the entry point is a .sh file. Read the file and try to find call to sudo-like: “sudo”, “gosu”, “sh -u”… And report the user found.
+        - Try to deduce the user used internally to run the software. This is not trivial. If the entry point is a .sh file. Read the file and try to find call to sudo-like: “sudo”, “gosu”, “sh -u”… And report the user found.
 
     - Extract: extract a docker image
-    - info: Get a image meta information
-    - modify:
+    - Info: Get a image meta information
+    - Modify:
 
         - entrypoint: change the entrypoint in a docker
         - **trojanize**: inject a reverser shell into a docker image
         - user: change running user in a docker image
 
+What's the difference from Clair or Docker Cloud?
+=================================================
+
+The purpose of Dockerscan is different. It's focussed in the attack phase. 
+
+Although Dockescan has some functionalities to detect vulnerabilities in Docker images and Docker registries, the objective is the attack. 
+
 Documentation
 =============
 
-Documentation is still in process... sorry!
+Documentation is still in progress... sorry!
 
-For the moment only have the Slides os presentation of RootedCON Spain. The conference where Docker Scan was presented:
+For the moment we only have the slides presented at RootedCON Spain, the conference where Docker Scan was presented:
 
 https://www.slideshare.net/secret/fxVqD2iXqanOCX
+
+Or you can watch it in video format (recommended):
+
+https://youtu.be/OwX1e4y4JMk
+
+Also, you can watch a dockerscan usage demo:
+
+https://youtu.be/UvtBGIb3E3o
 
 Contributing
 ============
 
 Any collaboration is welcome!
 
-There're many tasks to do.You can check the `Issues <https://github.com/cr0hn/dockerscan/issues/>`_ and send us a Pull Request.
-
-Also you can read the `TODO <https://github.com/cr0hn/dockerscan/blob/master/TODO.md>`_ file.
+There are many tasks to do. You can check the `Issues <https://github.com/cr0hn/dockerscan/issues/>`_ and send us a Pull Request.
 
 License
 =======
