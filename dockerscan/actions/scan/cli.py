@@ -1,13 +1,20 @@
 import click
 
-# from .console import launch_dockerscan_scan_in_console
+from .model import *
+from .console import *
+from ..helpers import check_console_input_config
 
 
-@click.command(help="Search for Open Docker Registries (still not avaible)")
+@click.command(help="Search for Open Docker Registries")
 @click.pass_context
-# @click.option("--scan")
-# @click.option("--shodan", "-S")
-# @click.option("--mrlooquer", "-M")
-def discover(ctx, **kwargs):
-    # launch_dockerscan_scan_in_console(ctx.obj, **kwargs)
-    pass
+@click.argument("target")
+@click.option("--timeout", "-t", "timeout", help="timeout for each port-check")
+@click.option("--ports", "-p", "ports",
+              help="ports to test. i.e: 80,443,8000-8080")
+@click.option("-c", "concurrency", help="Maximum concurrency scans")
+def scan(ctx, **kwargs):
+    config = DockerScanModel(**ctx.obj, **kwargs)
+
+    # Check if valid
+    if check_console_input_config(config):
+        launch_dockerscan_scan_in_console(config)

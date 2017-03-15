@@ -14,6 +14,25 @@ def launch_dockerscan_scan_in_console(config: DockerScanModel):
     log.setLevel(get_log_level(config.verbosity))
 
     with run_in_console(config.debug):
-        run_scan_dockerscan(config)
+
+        log.console("Starting the scanning")
+
+        results = run_scan_dockerscan(config)
+
+        log.console("Scanning results:")
+        if results:
+            for result in results:
+                for host, open_ports in result.items():
+                    log.console(" > Registry: {}".format(host))
+
+                    for port, status, is_ssl in open_ports:
+                        log.console("   - {}/TCP - [SSL: {}] - [{}]".format(
+                            port,
+                            "Enabled" if is_ssl else "Disabled",
+                            status.upper()))
+
+        else:
+            log.console("No registries found")
+
 
 __all__ = ("launch_dockerscan_scan_in_console",)

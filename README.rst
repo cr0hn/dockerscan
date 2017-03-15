@@ -46,6 +46,8 @@ Available actions
 
 Currently Docker Scan support these actions:
 
+- Scan: Scan a network trying to locate Docker Registries
+
 - Registry
 
     - Delete: Delete remote image / tag

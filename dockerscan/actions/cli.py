@@ -3,8 +3,8 @@ import logging
 
 from dockerscan import global_options
 
+from .scan.cli import scan
 from .image.cli import image
-from .scan.cli import discover
 from .registry.cli import registry
 
 log = logging.getLogger('dockerscan')
@@ -15,7 +15,7 @@ log = logging.getLogger('dockerscan')
 def cli(ctx, **kwargs):
     ctx.obj = kwargs
 
-cli.add_command(discover)
+cli.add_command(scan)
 cli.add_command(image)
 cli.add_command(registry)
 
