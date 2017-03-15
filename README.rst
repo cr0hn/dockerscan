@@ -17,7 +17,7 @@ dockerscan
 +----------------+--------------------------------------------------+
 |Documentation   | http://dockerscan.readthedocs.org                |
 +----------------+--------------------------------------------------+
-|Last Version    | 1.0.0-Alpha-01                                   |
+|Last Version    | 1.0.0-Alpha-02                                   |
 +----------------+--------------------------------------------------+
 |Python versions | 3.5 or above                                     |
 +----------------+--------------------------------------------------+
@@ -74,9 +74,9 @@ Currently Docker Scan support these actions:
 What's the difference from Clair or Docker Cloud?
 =================================================
 
-The purpose of Dockerscan is different. It's focussed in the attack phase. 
+The purpose of Dockerscan is different. It's focussed in the attack phase.
 
-Although Dockescan has some functionalities to detect vulnerabilities in Docker images and Docker registries, the objective is the attack. 
+Although Dockescan has some functionalities to detect vulnerabilities in Docker images and Docker registries, the objective is the attack.
 
 Documentation
 =============
