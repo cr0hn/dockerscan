@@ -85,7 +85,7 @@ Documentation is still in progress... sorry!
 
 For the moment we only have the slides presented at RootedCON Spain, the conference where Docker Scan was presented:
 
-https://www.slideshare.net/secret/fxVqD2iXqanOCX
+https://www.slideshare.net/cr0hn/rootedcon-2017-docker-might-not-be-your-friend-trojanizing-docker-images/1
 
 Or you can watch it in video format (recommended):
 
