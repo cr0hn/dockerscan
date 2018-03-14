@@ -2,7 +2,7 @@ click==6.7
 booby-ng==0.8.4
 requests==2.18.4
 colorlog==3.1.2
-python-dxf==5.1.1
+python-dxf==7.1.1
 
 # If SSL Connections fails, install these depenencies
 # pyOpenSSL ndg-httpsclient pyasn1
