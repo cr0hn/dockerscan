@@ -61,13 +61,13 @@ with codecs.open(version_file, 'r', 'latin1') as fp:
         raise RuntimeError('Unable to determine version.')
 
 
-with open(join(dirname(__file__), 'requirements.txt')) as f:
-    required = f.read().splitlines()
+with open(join(dirname(__file__), 'requirements.txt'), 'rb') as f:
+    required = f.read().split(b"\n")
 
-with open(join(dirname(__file__), 'requirements-performance.txt')) as f:
-    required_performance = f.read().splitlines()
+with open(join(dirname(__file__), 'requirements-performance.txt'), 'rb') as f:
+    required_performance = f.read().split(b"\n")
 
-with open(join(dirname(__file__), 'README.rst')) as f:
+with open(join(dirname(__file__), 'README.rst'), 'rb') as f:
     long_description = f.read()
 
 
@@ -84,7 +84,7 @@ class PyTest(TestCommand):
 setup(
     name='dockerscan',
     version=version,
-    install_requires=required,
+    install_requires=map(lambda s: s.decode("utf-8"), required),
     url='https://github.com/cr0hn/dockerscan',
     license='BSD',
     author='Daniel Garcia (cr0hn) / Roberto Munoz (robskye)',
@@ -92,13 +92,13 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     extras_require={
-        'performance':  required_performance
+        'performance': list(map(lambda s: s.decode("utf-8"), required_performance))
     },
     entry_points={'console_scripts': [
         'dockerscan = dockerscan.actions.cli:cli',
     ]},
     description='A Docker analysis tools',
-    long_description=long_description,
+    long_description=long_description.decode("utf-8"),
     classifiers=[
         'Environment :: Console',
         'Intended Audience :: System Administrators',
