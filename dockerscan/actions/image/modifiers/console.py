@@ -23,7 +23,7 @@ def launch_dockerscan_image_modify_trojanize_in_console(
 
         run_image_modify_trojanize_dockerscan(config)
 
-        log.console("Image troyanized successful")
+        log.console("Image trojanized successfully")
         log.console("Trojanized image location:")
         log.console("  > {}".format(
             "{}.tar".format(os.path.abspath(config.output_image))
