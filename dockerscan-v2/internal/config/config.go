@@ -1,0 +1,91 @@
+package config
+
+import (
+	"fmt"
+	"runtime"
+)
+
+const (
+	// Version is the application version
+	Version = "2.0.0"
+
+	// Author is the creator
+	Author = "Daniel Garcia (cr0hn)"
+
+	// Website is the author's website
+	Website = "https://cr0hn.com"
+
+	// Repository is the project repository
+	Repository = "https://github.com/cr0hn/dockerscan"
+)
+
+// Config holds application configuration
+type Config struct {
+	// Scanners to enable
+	EnabledScanners []string
+
+	// Output format (json, sarif)
+	OutputFormat string
+
+	// Output file path
+	OutputFile string
+
+	// Verbosity level
+	Verbose bool
+
+	// Show only critical/high severity
+	OnlyCritical bool
+
+	// Parallel scan workers
+	Workers int
+}
+
+// NewDefaultConfig creates default configuration
+func NewDefaultConfig() *Config {
+	return &Config{
+		EnabledScanners: []string{
+			"cis-benchmark",
+			"secrets",
+			"supply-chain",
+			"vulnerabilities",
+			"runtime-security",
+		},
+		OutputFormat: "json",
+		Workers:      runtime.NumCPU(),
+	}
+}
+
+// Banner returns the application banner
+func Banner() string {
+	return fmt.Sprintf(`
+╔══════════════════════════════════════════════════════════════════════════╗
+║                                                                          ║
+║   ██████╗  ██████╗  ██████╗██╗  ██╗███████╗██████╗ ███████╗ ██████╗ █████╗ ███╗   ██╗
+║   ██╔══██╗██╔═══██╗██╔════╝██║ ██╔╝██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║
+║   ██║  ██║██║   ██║██║     █████╔╝ █████╗  ██████╔╝███████╗██║     ███████║██╔██╗ ██║
+║   ██║  ██║██║   ██║██║     ██╔═██╗ ██╔══╝  ██╔══██╗╚════██║██║     ██╔══██║██║╚██╗██║
+║   ██████╔╝╚██████╔╝╚██████╗██║  ██╗███████╗██║  ██║███████║╚██████╗██║  ██║██║ ╚████║
+║   ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝
+║                                                                          ║
+║                    Advanced Docker Security Scanner v%s                 ║
+║                                                                          ║
+║   Author:     %s                                        ║
+║   Website:    %s                                       ║
+║   Repository: %s                  ║
+║                                                                          ║
+║   The most comprehensive Docker security analysis tool                  ║
+║   • CIS Docker Benchmark v1.7.0                                        ║
+║   • Supply Chain Attack Detection                                       ║
+║   • CVE & Vulnerability Scanning                                        ║
+║   • Secrets Detection (AWS, GCP, Azure, API Keys, JWT, etc.)          ║
+║   • Runtime Security Analysis                                           ║
+║   • SARIF & JSON Reporting                                             ║
+║                                                                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+`, Version, Author, Website, Repository)
+}
+
+// ShortBanner returns a compact banner
+func ShortBanner() string {
+	return fmt.Sprintf("DockerScan v%s by %s | %s\n", Version, Author, Website)
+}
