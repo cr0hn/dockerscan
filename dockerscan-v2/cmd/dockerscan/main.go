@@ -137,7 +137,7 @@ func printSummary(result *models.ScanResult) {
 
 	// Print detailed findings
 	if len(result.Findings) > 0 {
-		fmt.Println("\n🔍 Detailed Findings:\n")
+		fmt.Println("\n🔍 Detailed Findings:")
 
 		for i, finding := range result.Findings {
 			severitySymbol := getSeveritySymbol(finding.Severity)
