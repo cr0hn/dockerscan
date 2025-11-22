@@ -4,7 +4,7 @@
 
 ### *The Most Comprehensive Docker Security Scanner*
 
-[![License](https://img.shields.io/badge/license-BSD--3-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.21+-00ADD8.svg?logo=go)](https://golang.org/)
 [![Version](https://img.shields.io/github/v/release/cr0hn/dockerscan?label=version)](https://github.com/cr0hn/dockerscan/releases)
 [![CI/CD](https://img.shields.io/badge/CI/CD-Manual-blue.svg)](https://github.com/cr0hn/dockerscan/actions/workflows/dockerscan.yml)
@@ -619,7 +619,7 @@ fi
 | **Exit Codes** | ✅ CI/CD ready | ✅ | Partial | ✅ | ✅ |
 | **Cost** | 🆓 Free | 🆓 Free | 🆓 Free | 💰 Paid tiers | 🆓 Free |
 | **Offline Mode** | ✅ | ✅ | ❌ | ❌ | ✅ |
-| **License** | BSD-3 | Apache-2.0 | Apache-2.0 | Proprietary | Apache-2.0 |
+| **License** | Proprietary Source-Available | Apache-2.0 | Apache-2.0 | Proprietary | Apache-2.0 |
 
 ### Why Choose DockerScan?
 
@@ -777,28 +777,49 @@ We especially welcome:
 
 ## 📄 License
 
-This project is licensed under the **BSD-3-Clause License**.
+This project is licensed under the **DockerScan Proprietary Source-Available License**.
 
-```
-Copyright (c) 2024, Daniel Garcia (cr0hn)
-All rights reserved.
+### What This Means
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+✅ **You CAN (Free of Charge):**
+- Use DockerScan **for free** for internal security scanning
+- Use it in your **CI/CD pipelines** and security workflows
+- **Modify, fork, and contribute** back to the community
+- Use it for **educational and research** purposes
+- Use it as a **tool in professional services** (consulting, security audits, pentesting)
+- **Integrate** it into other products where it's an ancillary component
 
-1. Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
+❌ **You CANNOT (without express written permission or commercial license):**
+- Offer **Docker scanning as a commercial SaaS**
+- **Sell hosted instances** of DockerScan
+- Build a **commercial platform** primarily based on DockerScan
+- Create a **paid managed service** where DockerScan is the primary offering
 
-2. Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
+### Why This License?
 
-3. Neither the name of the copyright holder nor the names of its contributors
-   may be used to endorse or promote products derived from this software
-   without specific prior written permission.
-```
+This license protects the project's sustainability by:
+- ✅ Granting **freedom** to use the software for legitimate purposes
+- ❌ Preventing **harmful free-riding** where companies profit from offering it as a service without contributing back
+- 💰 Ensuring the project remains **sustainable** through commercial licensing for competing uses
+- 🔓 Keeping the **source code available** for transparency and community contributions
 
-See [LICENSE](LICENSE) file for full details.
+**This is NOT open source** - it's **source-available** with restrictions on commercial competitive use.
+
+### Commercial Licensing
+
+**Required for:**
+- SaaS or hosted offerings
+- Commercial platforms using DockerScan as a primary feature
+- Reselling or redistributing as a commercial product
+- Managed services where DockerScan is the core offering
+
+**Contact for commercial licensing:**
+
+📧 Email: cr0hn [at] cr0hn.com
+🌐 Website: https://cr0hn.com
+💼 Flexible licensing terms available for enterprise and startups
+
+See the [LICENSE](LICENSE) file for complete legal terms.
 
 ---
 
