@@ -12,6 +12,7 @@ bin/
 # Output files
 *.out
 coverage.out
+coverage.html
 *.json
 *.sarif
 
