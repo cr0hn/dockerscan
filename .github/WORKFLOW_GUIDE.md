@@ -2,7 +2,7 @@
 
 ## Overview
 
-DockerScan uses a **unified manual-trigger workflow** that gives you complete control over CI/CD operations.
+DockerScan uses a **simple manual-trigger workflow** for releases. Just provide a version tag and everything runs automatically.
 
 ## 🎯 How to Use
 
@@ -14,7 +14,7 @@ DockerScan uses a **unified manual-trigger workflow** that gives you complete co
 
 ### 2. Run Workflow
 
-Click the **Run workflow** button and configure:
+Click the **Run workflow** button and enter the version:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -22,170 +22,109 @@ Click the **Run workflow** button and configure:
 ├─────────────────────────────────────────────┤
 │ Branch: main                        [▼]     │
 │                                             │
-│ ☑ Run tests                    [default: ✓]│
-│ ☑ Build binaries              [default: ✓]│
-│ ☐ Create GitHub release       [default: ✗]│
-│ Release version (e.g., v2.0.0): [_______]  │
-│ ☐ Run security scan           [default: ✗]│
+│ Release version (e.g., v2.0.0): [v2.0.0]   │
 │                                             │
 │              [Run workflow]                 │
 └─────────────────────────────────────────────┘
 ```
 
-## 📋 Configuration Options
+That's it! The workflow will automatically:
+- ✅ Run all tests with full coverage
+- ✅ Build binaries for 9 platforms
+- ✅ Create the git tag
+- ✅ Create the GitHub release
+- ✅ Upload all binaries to the release
+- ✅ Generate professional release notes
 
-### Run Tests
-- **Default**: ✅ Enabled
-- **What it does**:
-  - Runs full test suite with coverage
-  - Executes `go vet` static analysis
-  - Runs `staticcheck` linter
-  - Uploads coverage to Codecov
-- **When to disable**: Never (always run tests!)
+## 📋 What Happens Automatically
 
-### Build Binaries
-- **Default**: ✅ Enabled
-- **What it does**:
-  - Compiles for 9 platforms:
-    * Linux: amd64, arm64, 386
-    * macOS: amd64, arm64
-    * Windows: amd64, arm64, 386
-    * FreeBSD: amd64
-  - Generates SHA256 checksums
-  - Uploads artifacts (30-day retention)
-- **When to disable**: Testing-only runs
+### Step 1: Tests (Always)
+- Runs full test suite with coverage
+- Executes `go vet` static analysis
+- Runs `staticcheck` linter
+- Uploads coverage to Codecov
+- **If tests fail, workflow stops**
 
-### Create GitHub Release
-- **Default**: ❌ Disabled
-- **What it does**:
-  - Creates a GitHub release
-  - Uploads all binaries
-  - Generates professional release notes
-  - Updates 'latest' tag
-- **Requirements**:
-  - ✅ Must provide release version (e.g., v2.0.0)
-  - ✅ Tests must pass
-  - ✅ Binaries must build successfully
-- **When to enable**: Making an official release
+### Step 2: Build (After tests pass)
+- Compiles for 9 platforms:
+  * Linux: amd64, arm64, 386
+  * macOS: amd64, arm64
+  * Windows: amd64, arm64, 386
+  * FreeBSD: amd64
+- Generates SHA256 checksums
+- Uploads artifacts (30-day retention)
 
-### Release Version
-- **Default**: Empty
-- **Format**: `v2.0.0`, `v2.1.0-beta`, etc.
-- **Required**: Only if "Create GitHub release" is enabled
-- **Used for**: Version in binaries and release tag
+### Step 3: Release (After build succeeds)
+- **Creates git tag** (e.g., `v2.0.0`)
+- Creates GitHub release
+- Uploads all binaries
+- Generates professional release notes with:
+  - Installation instructions
+  - Feature list
+  - Security coverage details
+  - Usage examples
+  - Download links
+- Updates 'latest' tag
 
-### Run Security Scan
-- **Default**: ❌ Disabled
-- **What it does**:
-  - Runs CodeQL security analysis
-  - Detects vulnerabilities
-  - Creates security alerts
-- **When to enable**: Weekly/monthly security checks
+### Step 4: Summary (Always)
+- Shows status of all jobs
+- Provides download link
+- Displays workflow results
 
-## 🎬 Common Scenarios
+## 🎬 Example Usage
 
-### Scenario 1: Development Testing
-**Goal**: Test code changes
+### Creating Release v2.0.0
 
-```yaml
-✅ Run tests: Yes
-✅ Build binaries: Yes
-❌ Create release: No
-❌ Security scan: No
-```
+1. Go to Actions → DockerScan CI/CD
+2. Click "Run workflow"
+3. Enter version: `v2.0.0`
+4. Click "Run workflow"
 
 **Result**:
-- Tests run
-- Binaries built and available as artifacts
-- No release created
+- Tests run ✅
+- Binaries built for all platforms ✅
+- Tag `v2.0.0` created ✅
+- GitHub release created at `/releases/tag/v2.0.0` ✅
+- Binaries uploaded to release ✅
+- Release notes auto-generated ✅
 
----
+### Creating Beta Release
 
-### Scenario 2: Create Release
-**Goal**: Publish new version
+1. Go to Actions → DockerScan CI/CD
+2. Click "Run workflow"
+3. Enter version: `v2.1.0-beta`
+4. Click "Run workflow"
 
-```yaml
-✅ Run tests: Yes
-✅ Build binaries: Yes
-✅ Create release: Yes
-Release version: v2.1.0
-❌ Security scan: No
-```
-
-**Result**:
-- Tests run
-- Binaries built for all platforms
-- GitHub release created at `/releases/tag/v2.1.0`
-- Binaries uploaded to release
-- Release notes auto-generated
-
----
-
-### Scenario 3: Security Audit
-**Goal**: Check for vulnerabilities
-
-```yaml
-✅ Run tests: Yes
-❌ Build binaries: No
-❌ Create release: No
-✅ Security scan: Yes
-```
-
-**Result**:
-- Tests run
-- CodeQL security analysis performed
-- Security alerts generated if issues found
-
----
-
-### Scenario 4: Full Pipeline
-**Goal**: Everything
-
-```yaml
-✅ Run tests: Yes
-✅ Build binaries: Yes
-✅ Create release: Yes
-Release version: v2.0.0
-✅ Security scan: Yes
-```
-
-**Result**:
-- Complete CI/CD pipeline
-- All checks performed
-- Release published
-- Security verified
+**Result**: Same as above, but marked as pre-release
 
 ## 📊 Workflow Jobs
 
-The workflow consists of 5 jobs that run conditionally:
+The workflow consists of 4 jobs that run sequentially:
 
 ```
 ┌──────────────┐
-│    Test      │ ← Always runs if enabled
+│    Test      │ ← Runs all tests
 └──────┬───────┘
        │
        ▼
 ┌──────────────┐
-│    Build     │ ← Runs after tests (if enabled)
+│    Build     │ ← Builds binaries (9 platforms)
 └──────┬───────┘
        │
-       ├─────────────────┐
-       │                 │
-       ▼                 ▼
-┌──────────────┐  ┌──────────────┐
-│   Security   │  │   Release    │ ← Conditional
-└──────────────┘  └──────┬───────┘
-                         │
-                         ▼
-                  ┌──────────────┐
-                  │   Summary    │ ← Always runs
-                  └──────────────┘
+       ▼
+┌──────────────┐
+│   Release    │ ← Creates tag + release
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│   Summary    │ ← Shows results
+└──────────────┘
 ```
 
 ### Job Dependencies:
 - **Build** requires **Test** to pass
 - **Release** requires **Test** and **Build** to pass
-- **Security** runs independently
 - **Summary** always runs (even on failure)
 
 ## 🎯 Artifacts
@@ -222,59 +161,79 @@ By Daniel Garcia (cr0hn) | https://cr0hn.com
 
 | Job | Status |
 |-----|--------|
-| Tests | ✅ Success |
-| Build | ✅ Success |
-| Security Scan | ⏭️ Skipped |
-| Release | ✅ Success |
+| Tests | success |
+| Build | success |
+| Release | success |
 
 ## 🎉 Release Information
 
 **Version**: v2.0.0
 
 **Download**: https://github.com/cr0hn/dockerscan/releases/tag/v2.0.0
-
-## ⚙️ Configuration
-
-- Run Tests: true
-- Build Binaries: true
-- Create Release: true
-- Security Scan: false
 ```
 
 ## 🚀 Best Practices
 
-### For Development
-1. **Always run tests** before merging
-2. **Build binaries** to ensure cross-platform compatibility
-3. **Don't create releases** from feature branches
+### Version Naming
+1. **Use semantic versioning**: `v2.0.0`, `v2.1.0`, `v2.1.1`
+2. **Major releases**: `v2.0.0`, `v3.0.0` (breaking changes)
+3. **Minor releases**: `v2.1.0`, `v2.2.0` (new features)
+4. **Patch releases**: `v2.0.1`, `v2.0.2` (bug fixes)
+5. **Pre-releases**: `v2.1.0-beta`, `v2.1.0-rc1`, `v2.1.0-alpha`
 
-### For Releases
-1. **Create release from main** branch only
-2. **Use semantic versioning**: `v2.0.0`, `v2.1.0`, `v2.1.1`
-3. **Run security scan** before major releases
-4. **Test the binaries** before publishing
+### Release Checklist
+- [ ] Update version in code if needed
+- [ ] Update CHANGELOG.md
+- [ ] Merge all changes to main
+- [ ] Run workflow with version tag
+- [ ] Verify release page looks correct
+- [ ] Test downloaded binaries
+- [ ] Announce release
 
-### For Security
-1. **Run security scans** weekly or after dependency updates
-2. **Review CodeQL alerts** in Security tab
-3. **Keep Go version updated** in workflow
+### For Development Testing
+If you just want to test without creating a release:
+- Clone the repo
+- Run `make test` locally
+- Run `make build-all` to build for all platforms
+- Artifacts will be in `dockerscan-v2/bin/`
 
 ## 🔧 Troubleshooting
+
+### Tests Fail
+- Check the test output in the workflow logs
+- Run `make test` locally to reproduce
+- Fix the failing tests
+- Push the fix and re-run workflow
 
 ### Build Fails
 - Check Go syntax errors in code
 - Verify all dependencies are in `go.mod`
-- Check if tests pass first
+- Run `make build-all` locally to test
+- Check platform-specific issues
 
 ### Release Fails
-- Ensure version format is correct (`v2.0.0`)
-- Check if tag already exists
-- Verify GitHub token has write permissions
+- **Tag already exists**: Delete the tag first or use a new version
+  ```bash
+  git tag -d v2.0.0
+  git push origin :refs/tags/v2.0.0
+  ```
+- **Permission denied**: Check GitHub token has write permissions
+- **Missing artifacts**: Build job must complete successfully first
 
 ### Artifacts Missing
 - Check if build job completed successfully
 - Artifacts expire after 30 days
-- Download before expiration
+- Download from the release page instead
+
+## 🔐 Security
+
+The workflow has minimal permissions:
+- `contents: write` - Required to create releases and tags
+- `security-events: write` - For future security scanning integration
+
+The workflow uses:
+- Official GitHub Actions (checkout@v4, setup-go@v5)
+- Trusted third-party actions (softprops/action-gh-release@v1)
 
 ## 📞 Support
 

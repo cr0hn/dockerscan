@@ -3,31 +3,10 @@ name: DockerScan CI/CD
 on:
   workflow_dispatch:
     inputs:
-      run_tests:
-        description: 'Run tests'
-        required: true
-        default: true
-        type: boolean
-      build_binaries:
-        description: 'Build binaries for all platforms'
-        required: true
-        default: true
-        type: boolean
-      create_release:
-        description: 'Create GitHub release'
-        required: true
-        default: false
-        type: boolean
-      release_version:
+      version:
         description: 'Release version (e.g., v2.0.0)'
-        required: false
-        default: ''
-        type: string
-      run_security_scan:
-        description: 'Run CodeQL security analysis'
         required: true
-        default: false
-        type: boolean
+        type: string
 
 permissions:
   contents: write
@@ -37,7 +16,6 @@ jobs:
   # Job 1: Tests
   test:
     name: Run Tests
-    if: ${{ inputs.run_tests }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -91,7 +69,6 @@ jobs:
   # Job 2: Build Multi-Platform Binaries
   build:
     name: Build Binaries
-    if: ${{ inputs.build_binaries }}
     needs: [test]
     runs-on: ubuntu-latest
     steps:
@@ -108,11 +85,7 @@ jobs:
       - name: Determine version
         id: get_version
         run: |
-          if [ -n "${{ inputs.release_version }}" ]; then
-            VERSION="${{ inputs.release_version }}"
-          else
-            VERSION="dev-$(git rev-parse --short HEAD)"
-          fi
+          VERSION="${{ inputs.version }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
 
@@ -175,36 +148,9 @@ jobs:
           path: dockerscan-v2/bin/
           retention-days: 30
 
-  # Job 3: Security Scan
-  security:
-    name: Security Analysis
-    if: ${{ inputs.run_security_scan }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: go
-
-      - name: Build
-        working-directory: ./dockerscan-v2
-        run: go build -v ./...
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-
-  # Job 4: Create Release
+  # Job 3: Create Release
   release:
     name: Create GitHub Release
-    if: ${{ inputs.create_release && inputs.release_version != '' }}
     needs: [test, build]
     runs-on: ubuntu-latest
     steps:
@@ -216,13 +162,13 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: dockerscan-binaries-${{ inputs.release_version }}
+          name: dockerscan-binaries-${{ inputs.version }}
           path: dockerscan-v2/bin/
 
       - name: Create release notes
         run: |
           cat > RELEASE_NOTES.md << 'EOF'
-          ## 🐋🔒 DockerScan ${{ inputs.release_version }}
+          ## 🐋🔒 DockerScan ${{ inputs.version }}
 
           ### The Most Comprehensive Docker Security Scanner
 
@@ -244,10 +190,10 @@ jobs:
           #### Linux / macOS
           ```bash
           # Download (replace with your platform)
-          curl -L https://github.com/cr0hn/dockerscan/releases/download/${{ inputs.release_version }}/dockerscan-linux-amd64 -o dockerscan
+          curl -L https://github.com/cr0hn/dockerscan/releases/download/${{ inputs.version }}/dockerscan-linux-amd64 -o dockerscan
 
           # Verify checksum (recommended)
-          curl -L https://github.com/cr0hn/dockerscan/releases/download/${{ inputs.release_version }}/checksums.txt -o checksums.txt
+          curl -L https://github.com/cr0hn/dockerscan/releases/download/${{ inputs.version }}/checksums.txt -o checksums.txt
           sha256sum -c checksums.txt --ignore-missing
 
           # Make executable and install
@@ -260,7 +206,7 @@ jobs:
 
           #### Windows (PowerShell)
           ```powershell
-          Invoke-WebRequest -Uri "https://github.com/cr0hn/dockerscan/releases/download/${{ inputs.release_version }}/dockerscan-windows-amd64.exe" -OutFile "dockerscan.exe"
+          Invoke-WebRequest -Uri "https://github.com/cr0hn/dockerscan/releases/download/${{ inputs.version }}/dockerscan-windows-amd64.exe" -OutFile "dockerscan.exe"
           .\dockerscan.exe nginx:latest
           ```
 
@@ -331,8 +277,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ inputs.release_version }}
-          name: DockerScan ${{ inputs.release_version }}
+          tag_name: ${{ inputs.version }}
+          name: DockerScan ${{ inputs.version }}
           body_path: RELEASE_NOTES.md
           files: |
             dockerscan-v2/bin/dockerscan-*
@@ -351,7 +297,7 @@ jobs:
   summary:
     name: Workflow Summary
     if: always()
-    needs: [test, build, security, release]
+    needs: [test, build, release]
     runs-on: ubuntu-latest
     steps:
       - name: Generate summary
@@ -364,27 +310,15 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Tests | ${{ needs.test.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build | ${{ needs.build.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Security Scan | ${{ needs.security.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Release | ${{ needs.release.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release | ${{ needs.release.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ inputs.create_release }}" == "true" ] && [ -n "${{ inputs.release_version }}" ]; then
-            echo "## 🎉 Release Information" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Version**: ${{ inputs.release_version }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Download**: https://github.com/cr0hn/dockerscan/releases/tag/${{ inputs.release_version }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "## ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎉 Release Information" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Run Tests: ${{ inputs.run_tests }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Build Binaries: ${{ inputs.build_binaries }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Create Release: ${{ inputs.create_release }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Security Scan: ${{ inputs.run_security_scan }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Download**: https://github.com/cr0hn/dockerscan/releases/tag/${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "*DockerScan - Making Docker Security Accessible to Everyone*" >> $GITHUB_STEP_SUMMARY
