@@ -38,23 +38,23 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Download dependencies
-        working-directory: ./dockerscan-v2
+        working-directory: .
         run: go mod download
 
       - name: Run tests
-        working-directory: ./dockerscan-v2
+        working-directory: .
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Display coverage
-        working-directory: ./dockerscan-v2
+        working-directory: .
         run: go tool cover -func=coverage.out
 
       - name: Run go vet
-        working-directory: ./dockerscan-v2
+        working-directory: .
         run: go vet ./...
 
       - name: Run staticcheck
-        working-directory: ./dockerscan-v2
+        working-directory: .
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@latest
           staticcheck ./...
@@ -62,7 +62,7 @@ jobs:
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
-          file: ./dockerscan-v2/coverage.out
+          file: ./coverage.out
           flags: unittests
           fail_ci_if_error: false
 
@@ -90,7 +90,7 @@ jobs:
           echo "Building version: $VERSION"
 
       - name: Build for all platforms
-        working-directory: ./dockerscan-v2
+        working-directory: .
         run: |
           mkdir -p bin
 
@@ -134,7 +134,7 @@ jobs:
           ls -lh bin/
 
       - name: Generate checksums
-        working-directory: ./dockerscan-v2/bin
+        working-directory: ./bin
         run: |
           echo "📝 Generating SHA256 checksums..."
           sha256sum dockerscan-* > checksums.txt
@@ -145,7 +145,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dockerscan-binaries-${{ steps.get_version.outputs.VERSION }}
-          path: dockerscan-v2/bin/
+          path: bin/
           retention-days: 30
 
   # Job 3: Create Release
@@ -163,7 +163,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dockerscan-binaries-${{ inputs.version }}
-          path: dockerscan-v2/bin/
+          path: bin/
 
       - name: Create release notes
         run: |
@@ -248,9 +248,9 @@ jobs:
 
           ### 📚 Documentation
 
-          - [README](https://github.com/cr0hn/dockerscan/blob/main/dockerscan-v2/README.md) - Complete documentation
-          - [Use Cases](https://github.com/cr0hn/dockerscan/blob/main/dockerscan-v2/README.md#-use-cases) - CI/CD, audits, compliance
-          - [Architecture](https://github.com/cr0hn/dockerscan/blob/main/dockerscan-v2/README.md#-architecture) - Extensibility guide
+          - [README](https://github.com/cr0hn/dockerscan/blob/main/README.md) - Complete documentation
+          - [Use Cases](https://github.com/cr0hn/dockerscan/blob/main/README.md#-use-cases) - CI/CD, audits, compliance
+          - [Architecture](https://github.com/cr0hn/dockerscan/blob/main/README.md#-architecture) - Extensibility guide
 
           ### 🐛 Bug Reports & Feature Requests
 
@@ -281,8 +281,8 @@ jobs:
           name: DockerScan ${{ inputs.version }}
           body_path: RELEASE_NOTES.md
           files: |
-            dockerscan-v2/bin/dockerscan-*
-            dockerscan-v2/bin/checksums.txt
+            bin/dockerscan-*
+            bin/checksums.txt
           draft: false
           prerelease: false
         env:
