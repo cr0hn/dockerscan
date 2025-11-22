@@ -4,7 +4,7 @@
 
 ### *The Most Comprehensive Docker Security Scanner*
 
-[![License](https://img.shields.io/badge/license-FSL--1.1-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.21+-00ADD8.svg?logo=go)](https://golang.org/)
 [![Version](https://img.shields.io/github/v/release/cr0hn/dockerscan?label=version)](https://github.com/cr0hn/dockerscan/releases)
 [![CI/CD](https://img.shields.io/badge/CI/CD-Manual-blue.svg)](https://github.com/cr0hn/dockerscan/actions/workflows/dockerscan.yml)
@@ -619,7 +619,7 @@ fi
 | **Exit Codes** | ✅ CI/CD ready | ✅ | Partial | ✅ | ✅ |
 | **Cost** | 🆓 Free | 🆓 Free | 🆓 Free | 💰 Paid tiers | 🆓 Free |
 | **Offline Mode** | ✅ | ✅ | ❌ | ❌ | ✅ |
-| **License** | FSL-1.1 (→Apache-2.0) | Apache-2.0 | Apache-2.0 | Proprietary | Apache-2.0 |
+| **License** | Proprietary Source-Available | Apache-2.0 | Apache-2.0 | Proprietary | Apache-2.0 |
 
 ### Why Choose DockerScan?
 
@@ -777,11 +777,11 @@ We especially welcome:
 
 ## 📄 License
 
-This project is licensed under the **Functional Source License, Version 1.1 (FSL-1.1-Apache-2.0)**.
+This project is licensed under the **DockerScan Proprietary Source-Available License**.
 
 ### What This Means
 
-✅ **You CAN:**
+✅ **You CAN (Free of Charge):**
 - Use DockerScan **for free** for internal security scanning
 - Use it in your **CI/CD pipelines** and security workflows
 - **Modify, fork, and contribute** back to the community
@@ -789,29 +789,35 @@ This project is licensed under the **Functional Source License, Version 1.1 (FSL
 - Use it as a **tool in professional services** (consulting, security audits, pentesting)
 - **Integrate** it into other products where it's an ancillary component
 
-❌ **You CANNOT (without express written permission):**
+❌ **You CANNOT (without express written permission or commercial license):**
 - Offer **Docker scanning as a commercial SaaS**
 - **Sell hosted instances** of DockerScan
 - Build a **commercial platform** primarily based on DockerScan
 - Create a **paid managed service** where DockerScan is the primary offering
 
-🔄 **Automatic Transition:**
-After **2 years**, this license automatically converts to **Apache License 2.0**, allowing unrestricted use.
-
 ### Why This License?
 
-Similar to [Sentry's FSL](https://blog.sentry.io/introducing-the-functional-source-license-freedom-without-free-riding/), this license:
-- Grants **freedom** to use the software
-- Prevents **harmful free-riding** where companies profit from offering it as a service without contributing back
-- Ensures the project remains **sustainable** for the long term
-- Eventually becomes **fully open source** (Apache 2.0)
+This license protects the project's sustainability by:
+- ✅ Granting **freedom** to use the software for legitimate purposes
+- ❌ Preventing **harmful free-riding** where companies profit from offering it as a service without contributing back
+- 💰 Ensuring the project remains **sustainable** through commercial licensing for competing uses
+- 🔓 Keeping the **source code available** for transparency and community contributions
+
+**This is NOT open source** - it's **source-available** with restrictions on commercial competitive use.
 
 ### Commercial Licensing
 
-If you need to use DockerScan for a competing commercial service, commercial licenses are available.
+**Required for:**
+- SaaS or hosted offerings
+- Commercial platforms using DockerScan as a primary feature
+- Reselling or redistributing as a commercial product
+- Managed services where DockerScan is the core offering
 
-📧 Contact: cr0hn [at] cr0hn.com
+**Contact for commercial licensing:**
+
+📧 Email: cr0hn [at] cr0hn.com
 🌐 Website: https://cr0hn.com
+💼 Flexible licensing terms available for enterprise and startups
 
 See the [LICENSE](LICENSE) file for complete legal terms.
 
