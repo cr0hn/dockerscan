@@ -1,0 +1,390 @@
+name: DockerScan CI/CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run tests'
+        required: true
+        default: true
+        type: boolean
+      build_binaries:
+        description: 'Build binaries for all platforms'
+        required: true
+        default: true
+        type: boolean
+      create_release:
+        description: 'Create GitHub release'
+        required: true
+        default: false
+        type: boolean
+      release_version:
+        description: 'Release version (e.g., v2.0.0)'
+        required: false
+        default: ''
+        type: string
+      run_security_scan:
+        description: 'Run CodeQL security analysis'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  security-events: write
+
+jobs:
+  # Job 1: Tests
+  test:
+    name: Run Tests
+    if: ${{ inputs.run_tests }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-1.22-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-1.22-
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        working-directory: ./dockerscan-v2
+        run: go mod download
+
+      - name: Run tests
+        working-directory: ./dockerscan-v2
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Display coverage
+        working-directory: ./dockerscan-v2
+        run: go tool cover -func=coverage.out
+
+      - name: Run go vet
+        working-directory: ./dockerscan-v2
+        run: go vet ./...
+
+      - name: Run staticcheck
+        working-directory: ./dockerscan-v2
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./dockerscan-v2/coverage.out
+          flags: unittests
+          fail_ci_if_error: false
+
+  # Job 2: Build Multi-Platform Binaries
+  build:
+    name: Build Binaries
+    if: ${{ inputs.build_binaries }}
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Determine version
+        id: get_version
+        run: |
+          if [ -n "${{ inputs.release_version }}" ]; then
+            VERSION="${{ inputs.release_version }}"
+          else
+            VERSION="dev-$(git rev-parse --short HEAD)"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Build for all platforms
+        working-directory: ./dockerscan-v2
+        run: |
+          mkdir -p bin
+
+          echo "🔨 Building for Linux amd64..."
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/cr0hn/dockerscan/v2/internal/config.Version=${{ steps.get_version.outputs.VERSION }}" \
+            -o bin/dockerscan-linux-amd64 ./cmd/dockerscan
+
+          echo "🔨 Building for Linux arm64..."
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/cr0hn/dockerscan/v2/internal/config.Version=${{ steps.get_version.outputs.VERSION }}" \
+            -o bin/dockerscan-linux-arm64 ./cmd/dockerscan
+
+          echo "🔨 Building for Linux 386..."
+          GOOS=linux GOARCH=386 go build -ldflags="-s -w -X github.com/cr0hn/dockerscan/v2/internal/config.Version=${{ steps.get_version.outputs.VERSION }}" \
+            -o bin/dockerscan-linux-386 ./cmd/dockerscan
+
+          echo "🔨 Building for macOS amd64 (Intel)..."
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X github.com/cr0hn/dockerscan/v2/internal/config.Version=${{ steps.get_version.outputs.VERSION }}" \
+            -o bin/dockerscan-darwin-amd64 ./cmd/dockerscan
+
+          echo "🔨 Building for macOS arm64 (Apple Silicon)..."
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X github.com/cr0hn/dockerscan/v2/internal/config.Version=${{ steps.get_version.outputs.VERSION }}" \
+            -o bin/dockerscan-darwin-arm64 ./cmd/dockerscan
+
+          echo "🔨 Building for Windows amd64..."
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X github.com/cr0hn/dockerscan/v2/internal/config.Version=${{ steps.get_version.outputs.VERSION }}" \
+            -o bin/dockerscan-windows-amd64.exe ./cmd/dockerscan
+
+          echo "🔨 Building for Windows arm64..."
+          GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X github.com/cr0hn/dockerscan/v2/internal/config.Version=${{ steps.get_version.outputs.VERSION }}" \
+            -o bin/dockerscan-windows-arm64.exe ./cmd/dockerscan
+
+          echo "🔨 Building for Windows 386..."
+          GOOS=windows GOARCH=386 go build -ldflags="-s -w -X github.com/cr0hn/dockerscan/v2/internal/config.Version=${{ steps.get_version.outputs.VERSION }}" \
+            -o bin/dockerscan-windows-386.exe ./cmd/dockerscan
+
+          echo "🔨 Building for FreeBSD amd64..."
+          GOOS=freebsd GOARCH=amd64 go build -ldflags="-s -w -X github.com/cr0hn/dockerscan/v2/internal/config.Version=${{ steps.get_version.outputs.VERSION }}" \
+            -o bin/dockerscan-freebsd-amd64 ./cmd/dockerscan
+
+          echo "✅ All builds completed!"
+          ls -lh bin/
+
+      - name: Generate checksums
+        working-directory: ./dockerscan-v2/bin
+        run: |
+          echo "📝 Generating SHA256 checksums..."
+          sha256sum dockerscan-* > checksums.txt
+          echo "✅ Checksums generated:"
+          cat checksums.txt
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dockerscan-binaries-${{ steps.get_version.outputs.VERSION }}
+          path: dockerscan-v2/bin/
+          retention-days: 30
+
+  # Job 3: Security Scan
+  security:
+    name: Security Analysis
+    if: ${{ inputs.run_security_scan }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+
+      - name: Build
+        working-directory: ./dockerscan-v2
+        run: go build -v ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # Job 4: Create Release
+  release:
+    name: Create GitHub Release
+    if: ${{ inputs.create_release && inputs.release_version != '' }}
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dockerscan-binaries-${{ inputs.release_version }}
+          path: dockerscan-v2/bin/
+
+      - name: Create release notes
+        run: |
+          cat > RELEASE_NOTES.md << 'EOF'
+          ## 🐋🔒 DockerScan ${{ inputs.release_version }}
+
+          ### The Most Comprehensive Docker Security Scanner
+
+          **By [Daniel Garcia (cr0hn)](https://cr0hn.com)**
+
+          ---
+
+          ### 🎯 What's Included
+
+          This release includes pre-compiled binaries for:
+
+          - **Linux**: amd64, arm64, 386
+          - **macOS**: amd64 (Intel), arm64 (Apple Silicon)
+          - **Windows**: amd64, arm64, 386
+          - **FreeBSD**: amd64
+
+          ### 🚀 Quick Start
+
+          #### Linux / macOS
+          ```bash
+          # Download (replace with your platform)
+          curl -L https://github.com/cr0hn/dockerscan/releases/download/${{ inputs.release_version }}/dockerscan-linux-amd64 -o dockerscan
+
+          # Verify checksum (recommended)
+          curl -L https://github.com/cr0hn/dockerscan/releases/download/${{ inputs.release_version }}/checksums.txt -o checksums.txt
+          sha256sum -c checksums.txt --ignore-missing
+
+          # Make executable and install
+          chmod +x dockerscan
+          sudo mv dockerscan /usr/local/bin/
+
+          # Run
+          dockerscan nginx:latest
+          ```
+
+          #### Windows (PowerShell)
+          ```powershell
+          Invoke-WebRequest -Uri "https://github.com/cr0hn/dockerscan/releases/download/${{ inputs.release_version }}/dockerscan-windows-amd64.exe" -OutFile "dockerscan.exe"
+          .\dockerscan.exe nginx:latest
+          ```
+
+          ### 🌟 Features
+
+          ✅ **CIS Docker Benchmark v1.7.0** - 80+ automated compliance checks
+          ✅ **Supply Chain Attack Detection** - Based on 2024-2025 research
+          ✅ **Advanced Secrets Detection** - 40+ secret patterns (AWS, GCP, Azure, API keys, etc.)
+          ✅ **CVE Scanning** - Critical 2024-2025 vulnerabilities
+          ✅ **Runtime Security** - Linux capabilities, Seccomp, AppArmor, namespace analysis
+          ✅ **SARIF Output** - GitHub Security, Azure DevOps, VS Code integration
+          ✅ **JSON Reports** - Machine-readable format
+          ✅ **Beautiful CLI** - Color-coded severity levels
+
+          ### 📊 Security Coverage
+
+          - **CIS Benchmark**: Host config, daemon hardening, image best practices, runtime security
+          - **Supply Chain**: Imageless containers, crypto miners, backdoored libs, signature verification
+          - **Secrets**: Cloud credentials, API keys, private keys, JWT tokens, DB connections
+          - **CVEs**: CVE-2024-21626, CVE-2024-23651/52/53, CVE-2024-8695/96, CVE-2025-9074
+          - **Runtime**: Capabilities audit, Seccomp profiles, container escape detection
+
+          ### 🔍 Example Usage
+
+          ```bash
+          # Basic scan
+          dockerscan nginx:latest
+
+          # Specific scanners
+          dockerscan --scanners cis,secrets,vulnerabilities myapp:v1.0
+
+          # CI/CD integration
+          dockerscan myapp:latest
+          if [ $? -eq 2 ]; then
+            echo "Critical vulnerabilities found!"
+            exit 1
+          fi
+          ```
+
+          ### 📚 Documentation
+
+          - [README](https://github.com/cr0hn/dockerscan/blob/main/dockerscan-v2/README.md) - Complete documentation
+          - [Use Cases](https://github.com/cr0hn/dockerscan/blob/main/dockerscan-v2/README.md#-use-cases) - CI/CD, audits, compliance
+          - [Architecture](https://github.com/cr0hn/dockerscan/blob/main/dockerscan-v2/README.md#-architecture) - Extensibility guide
+
+          ### 🐛 Bug Reports & Feature Requests
+
+          Please report issues at: https://github.com/cr0hn/dockerscan/issues
+
+          ### 📄 License
+
+          BSD-3-Clause License
+
+          ### 👤 Author
+
+          **Daniel Garcia (cr0hn)**
+          - Website: https://cr0hn.com
+          - GitHub: https://github.com/cr0hn
+          - Twitter: @ggdaniel
+
+          ---
+
+          **⭐ If you find DockerScan useful, please star the repository!**
+
+          *Making Docker Security Accessible to Everyone*
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ inputs.release_version }}
+          name: DockerScan ${{ inputs.release_version }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            dockerscan-v2/bin/dockerscan-*
+            dockerscan-v2/bin/checksums.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update latest tag
+        run: |
+          git tag -f latest
+          git push -f origin latest
+
+  # Summary Job
+  summary:
+    name: Workflow Summary
+    if: always()
+    needs: [test, build, security, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate summary
+        run: |
+          echo "# 🐋 DockerScan CI/CD Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**By Daniel Garcia (cr0hn)** | https://cr0hn.com" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Workflow Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${{ needs.test.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release | ${{ needs.release.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.create_release }}" == "true" ] && [ -n "${{ inputs.release_version }}" ]; then
+            echo "## 🎉 Release Information" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Version**: ${{ inputs.release_version }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Download**: https://github.com/cr0hn/dockerscan/releases/tag/${{ inputs.release_version }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "## ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Run Tests: ${{ inputs.run_tests }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build Binaries: ${{ inputs.build_binaries }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Create Release: ${{ inputs.create_release }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Security Scan: ${{ inputs.run_security_scan }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*DockerScan - Making Docker Security Accessible to Everyone*" >> $GITHUB_STEP_SUMMARY
