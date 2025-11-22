@@ -1,29 +1,131 @@
-Copyright (c) Daniel Garcia (cr0hn) / Roberto Munoz
+# Functional Source License, Version 1.1, Apache 2.0 Future License
 
-Project home: https://github.com/cr0hn/dockerscan
-Project contact: author[at]mail.com
+## Abbreviation
+FSL-1.1-Apache-2.0
 
-Redistribution and use in source and binary forms, with or without modification,
-are permitted provided that the following conditions are met:
+## Notice
+Copyright 2024 Daniel Garcia (cr0hn)
 
-    1. Redistributions of source code must retain the above copyright notice,
-       this list of conditions and the following disclaimer.
+## Terms and Conditions
 
-    2. Redistributions in binary form must reproduce the above copyright
-       notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.
+### Licensor ("We")
+Daniel Garcia (cr0hn) - The entity offering the Software under these licensing terms and conditions.
 
-    3. Neither the name of Daniel Garcia (cr0hn) / Roberto Munoz nor the names of its contributors may be used
-       to endorse or promote products derived from this software without
-       specific prior written permission.
+Website: https://cr0hn.com
+Project: https://github.com/cr0hn/dockerscan
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
-ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
-ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+### The Software
+DockerScan - A comprehensive Docker security scanning tool for detecting vulnerabilities,
+secrets, supply chain attacks, and compliance issues. Each version of the software is made
+available under these terms, as indicated by inclusion of this license document with the
+distribution.
+
+### License Grant
+Subject to the terms and conditions of this license, We grant you a non-exclusive, worldwide,
+royalty-free license to use, copy, modify, create derivative works, publicly perform, publicly
+display, and redistribute the Software for any Permitted Purpose.
+
+### Permitted Purpose
+**A "Permitted Purpose" means any purpose other than a Competing Use.**
+
+A **"Competing Use"** means use of the Software in or for a commercial product or service that:
+
+1. **Offers Docker security scanning as a service** (SaaS, hosted, managed, or cloud-based)
+   that competes with DockerScan or any commercial service we may offer using DockerScan.
+
+2. **Sells, licenses, or distributes DockerScan** (or substantial portions thereof) as a
+   commercial product or service.
+
+3. **Provides commercial managed services** where DockerScan is a primary or substantial
+   component of the service offering.
+
+**Permitted Purposes explicitly include:**
+
+- ✅ **Internal use** within your organization for security scanning
+- ✅ **Non-commercial use** for educational, research, or personal projects
+- ✅ **Professional services** where DockerScan is used as a tool (e.g., security audits,
+     penetration testing, consulting) but is not the product being sold
+- ✅ **Integration** into other software products where DockerScan is an ancillary component,
+     not the primary value proposition
+- ✅ **Open source projects** and community contributions
+- ✅ **Commercial use** within your organization's internal operations and CI/CD pipelines
+
+**Examples of Competing Uses (NOT permitted without express written permission):**
+
+- ❌ Offering "Docker Scanning as a Service" commercially
+- ❌ Selling hosted DockerScan instances
+- ❌ Building a commercial SaaS platform primarily based on DockerScan
+- ❌ Redistributing DockerScan as part of a commercial security product where it's a
+     primary feature
+- ❌ Creating a commercial managed service where customers pay primarily for DockerScan
+     functionality
+
+### Change Date
+Two (2) years from the date We make the Software available.
+
+### Change License
+Apache License, Version 2.0
+
+### Patents
+We grant you a patent license to use the Software for Permitted Purposes. This license
+terminates if you initiate litigation claiming that the Software infringes a patent.
+
+### Redistribution
+You may redistribute the Software provided that:
+
+1. You include this license document with all copies or substantial portions of the Software.
+2. You retain all copyright, patent, trademark, and attribution notices.
+3. Modified versions must be clearly marked as such and cannot misrepresent the origin
+   of the Software.
+4. Redistributions are only for Permitted Purposes.
+
+### No Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+### Limitation of Liability
+IN NO EVENT WILL WE BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR
+PUNITIVE DAMAGES, OR DAMAGES FOR LOSS OF PROFITS, REVENUE, BUSINESS, SAVINGS, DATA, USE,
+OR COST OF SUBSTITUTE PROCUREMENT, ARISING OUT OF OR RELATED TO THIS LICENSE OR YOUR USE
+OF THE SOFTWARE, EVEN IF WE HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+### Trademarks
+This license does not grant permission to use the trade names, trademarks, service marks,
+or product names of the Licensor, except as required for reasonable and customary use in
+describing the origin of the Software.
+
+### Commercial Licensing
+If you wish to use DockerScan for a Competing Use, you must obtain a separate commercial
+license. For commercial licensing inquiries, please contact:
+
+- Email: cr0hn [at] cr0hn.com
+- Website: https://cr0hn.com
+
+## Grant of Future License
+On the Change Date, or the fourth anniversary of the first publicly available distribution
+of a specific version of the Software under this License, whichever comes first, We grant
+you rights under the terms of the Change License, and the rights granted in the paragraph
+above terminate.
+
+If your use of the Software was previously a Permitted Purpose, this transition to the
+Change License does not affect your right to continue to use the Software under the
+Change License.
+
+## Additional Terms
+Use of the Software is also subject to any third-party licenses for dependencies included
+with the Software.
+
+---
+
+**Summary:**
+- ✅ Free to use for internal, educational, and non-competing commercial purposes
+- ✅ Modify, fork, and contribute back to the community
+- ✅ Use in your CI/CD pipelines and security workflows
+- ❌ Cannot offer as a paid SaaS or competing commercial service without permission
+- 🔄 Automatically becomes Apache 2.0 after 2 years
+
+For questions about this license, visit: https://github.com/cr0hn/dockerscan
