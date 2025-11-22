@@ -6,10 +6,13 @@
 
 [![License](https://img.shields.io/badge/license-BSD--3-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.21+-00ADD8.svg?logo=go)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/cr0hn/dockerscan/releases)
+[![Version](https://img.shields.io/github/v/release/cr0hn/dockerscan?label=version)](https://github.com/cr0hn/dockerscan/releases)
+[![Tests](https://github.com/cr0hn/dockerscan/workflows/Tests/badge.svg)](https://github.com/cr0hn/dockerscan/actions/workflows/test.yml)
+[![Release](https://github.com/cr0hn/dockerscan/workflows/Release/badge.svg)](https://github.com/cr0hn/dockerscan/actions/workflows/release.yml)
+[![CodeQL](https://github.com/cr0hn/dockerscan/workflows/CodeQL%20Security%20Analysis/badge.svg)](https://github.com/cr0hn/dockerscan/actions/workflows/codeql.yml)
 [![Test Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen.svg)](https://github.com/cr0hn/dockerscan)
-[![Build Status](https://img.shields.io/badge/build-passing-success.svg)](https://github.com/cr0hn/dockerscan)
 [![Go Report Card](https://img.shields.io/badge/go%20report-A+-brightgreen.svg)](https://goreportcard.com/report/github.com/cr0hn/dockerscan)
+[![Downloads](https://img.shields.io/github/downloads/cr0hn/dockerscan/total.svg)](https://github.com/cr0hn/dockerscan/releases)
 
 **By [Daniel Garcia (cr0hn)](https://cr0hn.com)** | [GitHub](https://github.com/cr0hn/dockerscan) | [Website](https://cr0hn.com)
 
@@ -178,19 +181,54 @@ DockerScan v2.0 is a **complete rewrite** from the ground up. Here's what change
 
 ### Option 1: Download Pre-built Binary (Recommended)
 
+Pre-compiled binaries are automatically built and released via GitHub Actions for every version tag.
+
+**Supported Platforms:**
+- **Linux**: amd64, arm64, 386
+- **macOS**: amd64 (Intel), arm64 (Apple Silicon)
+- **Windows**: amd64, arm64, 386
+- **FreeBSD**: amd64
+
+#### Linux (amd64)
 ```bash
-# Linux (amd64)
 curl -L https://github.com/cr0hn/dockerscan/releases/latest/download/dockerscan-linux-amd64 -o dockerscan
 chmod +x dockerscan
 sudo mv dockerscan /usr/local/bin/
+```
 
-# macOS (Apple Silicon)
+#### Linux (arm64)
+```bash
+curl -L https://github.com/cr0hn/dockerscan/releases/latest/download/dockerscan-linux-arm64 -o dockerscan
+chmod +x dockerscan
+sudo mv dockerscan /usr/local/bin/
+```
+
+#### macOS (Intel)
+```bash
+curl -L https://github.com/cr0hn/dockerscan/releases/latest/download/dockerscan-darwin-amd64 -o dockerscan
+chmod +x dockerscan
+sudo mv dockerscan /usr/local/bin/
+```
+
+#### macOS (Apple Silicon)
+```bash
 curl -L https://github.com/cr0hn/dockerscan/releases/latest/download/dockerscan-darwin-arm64 -o dockerscan
 chmod +x dockerscan
 sudo mv dockerscan /usr/local/bin/
+```
 
-# Windows (PowerShell)
+#### Windows (PowerShell)
+```powershell
 Invoke-WebRequest -Uri "https://github.com/cr0hn/dockerscan/releases/latest/download/dockerscan-windows-amd64.exe" -OutFile "dockerscan.exe"
+```
+
+#### Verify Download (Optional but Recommended)
+```bash
+# Download checksums
+curl -L https://github.com/cr0hn/dockerscan/releases/latest/download/checksums.txt -o checksums.txt
+
+# Verify (Linux/macOS)
+sha256sum -c checksums.txt --ignore-missing
 ```
 
 ### Option 2: Build from Source
