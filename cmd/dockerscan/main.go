@@ -15,6 +15,7 @@ import (
 	"github.com/cr0hn/dockerscan/v2/internal/scanner/secrets"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner/supplychain"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner/vulnerabilities"
+	"github.com/cr0hn/dockerscan/v2/pkg/docker"
 )
 
 func main() {
@@ -36,15 +37,23 @@ func main() {
 
 	imageName := os.Args[1]
 
+	// Create Docker client
+	dockerClient, err := docker.NewClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create Docker client: %v\n", err)
+		os.Exit(1)
+	}
+	defer dockerClient.Close()
+
 	// Create scanner registry
 	registry := scanner.NewRegistry()
 
 	// Register all scanners
-	registry.Register(cis.NewCISScanner())
-	registry.Register(secrets.NewSecretsScanner())
-	registry.Register(supplychain.NewSupplyChainScanner())
-	registry.Register(vulnerabilities.NewVulnerabilityScanner())
-	registry.Register(runtime.NewRuntimeScanner())
+	registry.Register(cis.NewCISScanner(dockerClient))
+	registry.Register(secrets.NewSecretsScanner(dockerClient))
+	registry.Register(supplychain.NewSupplyChainScanner(dockerClient))
+	registry.Register(vulnerabilities.NewVulnerabilityScanner(dockerClient))
+	registry.Register(runtime.NewRuntimeScanner(dockerClient))
 
 	fmt.Printf("\n🔍 Scanning image: %s\n\n", imageName)
 

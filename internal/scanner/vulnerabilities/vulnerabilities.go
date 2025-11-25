@@ -3,238 +3,801 @@ package vulnerabilities
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner"
+	"github.com/cr0hn/dockerscan/v2/pkg/docker"
 )
 
 // VulnerabilityScanner detects CVEs and security vulnerabilities
 type VulnerabilityScanner struct {
 	scanner.BaseScanner
+	dockerClient *docker.Client
 }
 
 // NewVulnerabilityScanner creates a new vulnerability scanner
-func NewVulnerabilityScanner() *VulnerabilityScanner {
+func NewVulnerabilityScanner(dockerClient *docker.Client) *VulnerabilityScanner {
 	return &VulnerabilityScanner{
 		BaseScanner: scanner.NewBaseScanner(
 			"vulnerabilities",
 			"CVE detection and vulnerability scanning (2024 critical CVEs)",
 			true,
 		),
+		dockerClient: dockerClient,
 	}
 }
 
 // Scan performs vulnerability scanning
 func (s *VulnerabilityScanner) Scan(ctx context.Context, target models.ScanTarget) ([]models.Finding, error) {
 	var findings []models.Finding
+	var packages []docker.PackageInfo
+	var history []docker.HistoryEntry
+	var imageInfo *docker.ImageInfo
 
-	// Check for critical 2024 CVEs
-	findings = append(findings, s.check2024CriticalCVEs(target)...)
+	// Get installed packages from the image (non-fatal if fails)
+	pkgs, err := s.dockerClient.ListPackages(ctx, target.ImageName)
+	if err == nil {
+		packages = pkgs
+	}
+	// Continue even if package listing fails
 
-	// Scan for known vulnerable packages
-	findings = append(findings, s.scanVulnerablePackages(target)...)
+	// Get image history to detect base image (non-fatal if fails)
+	hist, err := s.dockerClient.GetImageHistory(ctx, target.ImageName)
+	if err == nil {
+		history = hist
+	}
 
-	// Check base image vulnerabilities
-	findings = append(findings, s.checkBaseImageVulns(target)...)
+	// Get image info for OS detection (required)
+	info, err := s.dockerClient.InspectImage(ctx, target.ImageName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect image: %w", err)
+	}
+	imageInfo = info
+
+	// Check for vulnerable packages with actual version comparison
+	if len(packages) > 0 {
+		findings = append(findings, s.checkVulnerablePackages(packages)...)
+	}
+
+	// Check base image from history
+	findings = append(findings, s.checkBaseImage(history, imageInfo)...)
+
+	// Check for EOL images
+	findings = append(findings, s.checkEOLImages(history, imageInfo)...)
+
+	// Check for specific 2024 CVEs based on actual components
+	findings = append(findings, s.check2024CVEs(packages, imageInfo)...)
 
 	return findings, nil
 }
 
-// check2024CriticalCVEs checks for specific critical CVEs from 2024
-func (s *VulnerabilityScanner) check2024CriticalCVEs(target models.ScanTarget) []models.Finding {
+// checkVulnerablePackages checks installed packages against vulnerability database
+func (s *VulnerabilityScanner) checkVulnerablePackages(packages []docker.PackageInfo) []models.Finding {
 	var findings []models.Finding
+
+	// Create a map for quick package lookup
+	packageMap := make(map[string]docker.PackageInfo)
+	for _, pkg := range packages {
+		packageMap[pkg.Name] = pkg
+	}
+
+	// Vulnerability database with package name -> CVE details
+	vulnDB := s.buildVulnerabilityDatabase()
+
+	// Check each installed package against vulnerability database
+	for _, pkg := range packages {
+		if vulns, exists := vulnDB[pkg.Name]; exists {
+			for _, vuln := range vulns {
+				if s.isVersionVulnerable(pkg.Version, vuln.AffectedVersions, vuln.FixedVersion) {
+					finding := models.Finding{
+						ID:          fmt.Sprintf("%s-%s", vuln.CVEID, pkg.Name),
+						Title:       fmt.Sprintf("%s in %s %s", vuln.CVEID, pkg.Name, pkg.Version),
+						Description: fmt.Sprintf("%s\n\nInstalled version: %s\nFixed in version: %s\nPackage source: %s", vuln.Description, pkg.Version, vuln.FixedVersion, pkg.Source),
+						Severity:    vuln.Severity,
+						Category:    "Vulnerability",
+						Source:      "vulnerabilities",
+						Remediation: fmt.Sprintf("Update %s to version %s or later. Rebuild the image with: apt-get update && apt-get upgrade %s (for dpkg) or apk upgrade %s (for Alpine)", pkg.Name, vuln.FixedVersion, pkg.Name, pkg.Name),
+						References:  vuln.References,
+						Metadata: map[string]interface{}{
+							"cve_id":          vuln.CVEID,
+							"package_name":    pkg.Name,
+							"package_version": pkg.Version,
+							"package_source":  pkg.Source,
+							"fixed_version":   vuln.FixedVersion,
+							"cvss_score":      vuln.CVSSScore,
+						},
+					}
+					findings = append(findings, finding)
+				}
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkBaseImage detects the base image from history
+func (s *VulnerabilityScanner) checkBaseImage(history []docker.HistoryEntry, imageInfo *docker.ImageInfo) []models.Finding {
+	var findings []models.Finding
+
+	// Parse history to find FROM instruction
+	baseImage := s.detectBaseImageFromHistory(history)
+
+	if baseImage == "" {
+		// Try to detect from image tags
+		if len(imageInfo.RepoTags) > 0 {
+			tag := imageInfo.RepoTags[0]
+			if strings.Contains(tag, ":") {
+				parts := strings.Split(tag, ":")
+				if len(parts) >= 2 {
+					baseImage = parts[0]
+				}
+			}
+		}
+	}
+
+	if baseImage != "" {
+		// Check if base image is known to be vulnerable
+		vulnerableBaseImages := map[string]VulnerableBaseImage{
+			"ubuntu:14.04": {
+				Name:        "ubuntu:14.04",
+				Reason:      "Ubuntu 14.04 reached end-of-life in April 2019",
+				Severity:    models.SeverityHigh,
+				Replacement: "ubuntu:22.04 or ubuntu:24.04",
+			},
+			"ubuntu:16.04": {
+				Name:        "ubuntu:16.04",
+				Reason:      "Ubuntu 16.04 reached end-of-life in April 2021",
+				Severity:    models.SeverityHigh,
+				Replacement: "ubuntu:22.04 or ubuntu:24.04",
+			},
+			"debian:7": {
+				Name:        "debian:7 (wheezy)",
+				Reason:      "Debian 7 reached end-of-life in May 2018",
+				Severity:    models.SeverityHigh,
+				Replacement: "debian:12 (bookworm) or debian:11 (bullseye)",
+			},
+			"debian:8": {
+				Name:        "debian:8 (jessie)",
+				Reason:      "Debian 8 reached end-of-life in June 2020",
+				Severity:    models.SeverityHigh,
+				Replacement: "debian:12 (bookworm) or debian:11 (bullseye)",
+			},
+			"centos:6": {
+				Name:        "centos:6",
+				Reason:      "CentOS 6 reached end-of-life in November 2020",
+				Severity:    models.SeverityCritical,
+				Replacement: "rockylinux:9 or almalinux:9",
+			},
+			"centos:7": {
+				Name:        "centos:7",
+				Reason:      "CentOS 7 reached end-of-life in June 2024",
+				Severity:    models.SeverityHigh,
+				Replacement: "rockylinux:9 or almalinux:9",
+			},
+			"centos:8": {
+				Name:        "centos:8",
+				Reason:      "CentOS 8 reached end-of-life in December 2021",
+				Severity:    models.SeverityHigh,
+				Replacement: "rockylinux:9 or almalinux:9",
+			},
+		}
+
+		// Check exact match first
+		if vulnBase, exists := vulnerableBaseImages[baseImage]; exists {
+			finding := models.Finding{
+				ID:          "VULN-BASE-IMAGE-EOL",
+				Title:       fmt.Sprintf("End-of-life base image: %s", vulnBase.Name),
+				Description: fmt.Sprintf("%s. This image no longer receives security updates and contains unpatched vulnerabilities.", vulnBase.Reason),
+				Severity:    vulnBase.Severity,
+				Category:    "Vulnerability",
+				Source:      "vulnerabilities",
+				Remediation: fmt.Sprintf("Update base image to %s and rebuild the container.", vulnBase.Replacement),
+				Metadata: map[string]interface{}{
+					"base_image":  vulnBase.Name,
+					"status":      "end-of-life",
+					"replacement": vulnBase.Replacement,
+				},
+			}
+			findings = append(findings, finding)
+		} else {
+			// Check partial matches
+			for pattern, vulnBase := range vulnerableBaseImages {
+				if strings.HasPrefix(baseImage, strings.Split(pattern, ":")[0]) {
+					// Additional version check
+					if s.isBaseImageVulnerable(baseImage, pattern) {
+						finding := models.Finding{
+							ID:          "VULN-BASE-IMAGE-EOL",
+							Title:       fmt.Sprintf("Potentially outdated base image: %s", baseImage),
+							Description: fmt.Sprintf("Base image appears to be based on %s. %s", vulnBase.Name, vulnBase.Reason),
+							Severity:    models.SeverityMedium,
+							Category:    "Vulnerability",
+							Source:      "vulnerabilities",
+							Remediation: fmt.Sprintf("Verify base image version and consider updating to %s.", vulnBase.Replacement),
+							Metadata: map[string]interface{}{
+								"base_image":  baseImage,
+								"status":      "potentially-outdated",
+								"replacement": vulnBase.Replacement,
+							},
+						}
+						findings = append(findings, finding)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkEOLImages checks for end-of-life distributions
+func (s *VulnerabilityScanner) checkEOLImages(history []docker.HistoryEntry, imageInfo *docker.ImageInfo) []models.Finding {
+	var findings []models.Finding
+
+	// Map of EOL distributions with versions
+	eolDistros := map[string]EOLInfo{
+		"node:10": {
+			Name:        "Node.js 10",
+			EOLDate:     "2021-04-30",
+			Risk:        "Node.js 10 no longer receives security updates",
+			Replacement: "node:20 or node:18 LTS",
+			Severity:    models.SeverityCritical,
+		},
+		"node:12": {
+			Name:        "Node.js 12",
+			EOLDate:     "2022-04-30",
+			Risk:        "Node.js 12 no longer receives security updates",
+			Replacement: "node:20 or node:18 LTS",
+			Severity:    models.SeverityHigh,
+		},
+		"node:14": {
+			Name:        "Node.js 14",
+			EOLDate:     "2023-04-30",
+			Risk:        "Node.js 14 no longer receives security updates",
+			Replacement: "node:20 or node:18 LTS",
+			Severity:    models.SeverityHigh,
+		},
+		"node:16": {
+			Name:        "Node.js 16",
+			EOLDate:     "2023-09-11",
+			Risk:        "Node.js 16 no longer receives security updates",
+			Replacement: "node:20 or node:22 LTS",
+			Severity:    models.SeverityMedium,
+		},
+		"python:2.7": {
+			Name:        "Python 2.7",
+			EOLDate:     "2020-01-01",
+			Risk:        "Python 2.7 reached end-of-life and contains numerous unpatched vulnerabilities",
+			Replacement: "python:3.12 or python:3.11",
+			Severity:    models.SeverityCritical,
+		},
+		"python:3.6": {
+			Name:        "Python 3.6",
+			EOLDate:     "2021-12-23",
+			Risk:        "Python 3.6 no longer receives security updates",
+			Replacement: "python:3.12 or python:3.11",
+			Severity:    models.SeverityHigh,
+		},
+		"python:3.7": {
+			Name:        "Python 3.7",
+			EOLDate:     "2023-06-27",
+			Risk:        "Python 3.7 no longer receives security updates",
+			Replacement: "python:3.12 or python:3.11",
+			Severity:    models.SeverityMedium,
+		},
+	}
+
+	// Detect base image from history
+	baseImage := s.detectBaseImageFromHistory(history)
+
+	// Also check image repo tags (e.g., "node:16-alpine")
+	imageTags := ""
+	if imageInfo != nil && len(imageInfo.RepoTags) > 0 {
+		imageTags = strings.Join(imageInfo.RepoTags, " ")
+	}
+
+	// Check against EOL distros - search in both base image and image tags
+	for pattern, eolInfo := range eolDistros {
+		lowerPattern := strings.ToLower(pattern)
+		if strings.Contains(strings.ToLower(baseImage), lowerPattern) ||
+			strings.Contains(strings.ToLower(imageTags), lowerPattern) {
+			finding := models.Finding{
+				ID:          fmt.Sprintf("VULN-EOL-%s", strings.ToUpper(strings.ReplaceAll(pattern, ":", "-"))),
+				Title:       fmt.Sprintf("End-of-life runtime detected: %s", eolInfo.Name),
+				Description: fmt.Sprintf("%s (EOL: %s). This version contains known unpatched security vulnerabilities.", eolInfo.Risk, eolInfo.EOLDate),
+				Severity:    eolInfo.Severity,
+				Category:    "Vulnerability",
+				Source:      "vulnerabilities",
+				Remediation: fmt.Sprintf("Upgrade to %s and rebuild the image.", eolInfo.Replacement),
+				References: []string{
+					"https://endoflife.date/",
+				},
+				Metadata: map[string]interface{}{
+					"component":   eolInfo.Name,
+					"eol_date":    eolInfo.EOLDate,
+					"replacement": eolInfo.Replacement,
+					"detected_in": imageTags,
+				},
+			}
+			findings = append(findings, finding)
+		}
+	}
+
+	return findings
+}
+
+// check2024CVEs checks for specific 2024 CVEs based on installed components
+func (s *VulnerabilityScanner) check2024CVEs(packages []docker.PackageInfo, imageInfo *docker.ImageInfo) []models.Finding {
+	var findings []models.Finding
+
+	// Create package map for quick lookup
+	packageMap := make(map[string]docker.PackageInfo)
+	for _, pkg := range packages {
+		packageMap[pkg.Name] = pkg
+	}
 
 	// CVE-2024-21626: runc container escape
-	cve202421626 := models.Finding{
-		ID:          "CVE-2024-21626",
-		Title:       "Critical runc vulnerability - Container Escape",
-		Description: "runc versions before 1.1.12 are vulnerable to container escape. An attacker can escape the container and gain access to the host system.",
-		Severity:    models.SeverityCritical,
-		Category:    "Vulnerability",
-		Source:      "vulnerabilities",
-		Remediation: "Update runc to version 1.1.12 or later. Update Docker Engine to latest version.",
-		References: []string{
-			"https://nvd.nist.gov/vuln/detail/CVE-2024-21626",
-			"https://github.com/opencontainers/runc/security/advisories/GHSA-xr7r-f8xq-vfvv",
-		},
-		Metadata: map[string]interface{}{
-			"cvss_score": 8.6,
-			"cve_id":     "CVE-2024-21626",
-			"component":  "runc",
-		},
+	// Check if runc is installed and version is vulnerable
+	if runcPkg, exists := packageMap["runc"]; exists {
+		if s.compareVersion(runcPkg.Version, "1.1.12") < 0 {
+			finding := models.Finding{
+				ID:          "CVE-2024-21626",
+				Title:       "Critical runc vulnerability - Container Escape (CVE-2024-21626)",
+				Description: fmt.Sprintf("runc version %s is vulnerable to container escape (CVE-2024-21626). An attacker can escape the container and gain access to the host system. Versions before 1.1.12 are affected.", runcPkg.Version),
+				Severity:    models.SeverityCritical,
+				Category:    "Vulnerability",
+				Source:      "vulnerabilities",
+				Remediation: "Update runc to version 1.1.12 or later. Update Docker Engine to latest version.",
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2024-21626",
+					"https://github.com/opencontainers/runc/security/advisories/GHSA-xr7r-f8xq-vfvv",
+				},
+				Metadata: map[string]interface{}{
+					"cvss_score":        8.6,
+					"cve_id":            "CVE-2024-21626",
+					"component":         "runc",
+					"installed_version": runcPkg.Version,
+					"fixed_version":     "1.1.12",
+				},
+			}
+			findings = append(findings, finding)
+		}
 	}
-	findings = append(findings, cve202421626)
 
-	// CVE-2024-23651: BuildKit RCE
-	cve202423651 := models.Finding{
-		ID:          "CVE-2024-23651",
-		Title:       "BuildKit cache poisoning vulnerability",
-		Description: "BuildKit vulnerability allows cache poisoning which can lead to remote code execution during image build.",
-		Severity:    models.SeverityCritical,
-		Category:    "Vulnerability",
-		Source:      "vulnerabilities",
-		Remediation: "Update BuildKit to version 0.12.5 or later. Update Docker to version 25.0.2 or later.",
-		References: []string{
-			"https://nvd.nist.gov/vuln/detail/CVE-2024-23651",
-		},
-		Metadata: map[string]interface{}{
-			"cvss_score": 9.1,
-			"cve_id":     "CVE-2024-23651",
-			"component":  "buildkit",
-		},
-	}
-	findings = append(findings, cve202423651)
+	// CVE-2024-23651, CVE-2024-23652, CVE-2024-23653: BuildKit vulnerabilities
+	// Check if buildkit or docker-buildx is installed
+	if buildkitPkg, exists := packageMap["buildkit"]; exists {
+		if s.compareVersion(buildkitPkg.Version, "0.12.5") < 0 {
+			// CVE-2024-23651: Cache poisoning
+			finding1 := models.Finding{
+				ID:          "CVE-2024-23651",
+				Title:       "BuildKit cache poisoning vulnerability (CVE-2024-23651)",
+				Description: fmt.Sprintf("BuildKit version %s is vulnerable to cache poisoning which can lead to remote code execution during image build. Versions before 0.12.5 are affected.", buildkitPkg.Version),
+				Severity:    models.SeverityCritical,
+				Category:    "Vulnerability",
+				Source:      "vulnerabilities",
+				Remediation: "Update BuildKit to version 0.12.5 or later. Update Docker to version 25.0.2 or later.",
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2024-23651",
+					"https://github.com/moby/buildkit/security/advisories/GHSA-m3r6-h7wv-7xxv",
+				},
+				Metadata: map[string]interface{}{
+					"cvss_score":        9.1,
+					"cve_id":            "CVE-2024-23651",
+					"component":         "buildkit",
+					"installed_version": buildkitPkg.Version,
+					"fixed_version":     "0.12.5",
+				},
+			}
+			findings = append(findings, finding1)
 
-	// CVE-2024-23652: BuildKit race condition
-	cve202423652 := models.Finding{
-		ID:          "CVE-2024-23652",
-		Title:       "BuildKit race condition vulnerability",
-		Description: "Race condition in BuildKit can lead to unauthorized access to build secrets.",
-		Severity:    models.SeverityHigh,
-		Category:    "Vulnerability",
-		Source:      "vulnerabilities",
-		Remediation: "Update BuildKit to version 0.12.5 or later.",
-		References: []string{
-			"https://nvd.nist.gov/vuln/detail/CVE-2024-23652",
-		},
-		Metadata: map[string]interface{}{
-			"cvss_score": 7.5,
-			"cve_id":     "CVE-2024-23652",
-			"component":  "buildkit",
-		},
-	}
-	findings = append(findings, cve202423652)
+			// CVE-2024-23652: Race condition
+			finding2 := models.Finding{
+				ID:          "CVE-2024-23652",
+				Title:       "BuildKit race condition vulnerability (CVE-2024-23652)",
+				Description: fmt.Sprintf("BuildKit version %s has a race condition that can lead to unauthorized access to build secrets. Versions before 0.12.5 are affected.", buildkitPkg.Version),
+				Severity:    models.SeverityHigh,
+				Category:    "Vulnerability",
+				Source:      "vulnerabilities",
+				Remediation: "Update BuildKit to version 0.12.5 or later.",
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2024-23652",
+					"https://github.com/moby/buildkit/security/advisories/GHSA-4v98-7qmw-rqr8",
+				},
+				Metadata: map[string]interface{}{
+					"cvss_score":        7.5,
+					"cve_id":            "CVE-2024-23652",
+					"component":         "buildkit",
+					"installed_version": buildkitPkg.Version,
+					"fixed_version":     "0.12.5",
+				},
+			}
+			findings = append(findings, finding2)
 
-	// CVE-2024-8695: Docker Desktop RCE
-	cve20248695 := models.Finding{
-		ID:          "CVE-2024-8695",
-		Title:       "Docker Desktop RCE via malicious extensions",
-		Description: "Docker Desktop vulnerability allows remote code execution through crafted extension descriptions.",
-		Severity:    models.SeverityCritical,
-		Category:    "Vulnerability",
-		Source:      "vulnerabilities",
-		Remediation: "Update Docker Desktop to version 4.34.2 or later.",
-		References: []string{
-			"https://docs.docker.com/security/security-announcements/",
-		},
-		Metadata: map[string]interface{}{
-			"cvss_score": 8.8,
-			"cve_id":     "CVE-2024-8695",
-			"component":  "docker-desktop",
-		},
+			// CVE-2024-23653: Privilege escalation
+			finding3 := models.Finding{
+				ID:          "CVE-2024-23653",
+				Title:       "BuildKit privilege escalation vulnerability (CVE-2024-23653)",
+				Description: fmt.Sprintf("BuildKit version %s is vulnerable to privilege escalation attacks. Versions before 0.12.5 are affected.", buildkitPkg.Version),
+				Severity:    models.SeverityHigh,
+				Category:    "Vulnerability",
+				Source:      "vulnerabilities",
+				Remediation: "Update BuildKit to version 0.12.5 or later.",
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2024-23653",
+					"https://github.com/moby/buildkit/security/advisories/GHSA-wr6v-9f75-vh2g",
+				},
+				Metadata: map[string]interface{}{
+					"cvss_score":        7.8,
+					"cve_id":            "CVE-2024-23653",
+					"component":         "buildkit",
+					"installed_version": buildkitPkg.Version,
+					"fixed_version":     "0.12.5",
+				},
+			}
+			findings = append(findings, finding3)
+		}
 	}
-	findings = append(findings, cve20248695)
 
-	// CVE-2025-9074: Docker Desktop local container access
-	cve20259074 := models.Finding{
-		ID:          "CVE-2025-9074",
-		Title:       "Docker Desktop local container access vulnerability",
-		Description: "Vulnerability allows local containers to access Docker Engine API via subnet routing.",
-		Severity:    models.SeverityHigh,
-		Category:    "Vulnerability",
-		Source:      "vulnerabilities",
-		Remediation: "Update Docker Desktop to the latest version. Restrict container network access.",
-		References: []string{
-			"https://socprime.com/blog/cve-2025-9074-docker-desktop-vulnerability/",
-		},
-		Metadata: map[string]interface{}{
-			"cvss_score": 7.8,
-			"cve_id":     "CVE-2025-9074",
-			"component":  "docker-desktop",
-		},
-	}
-	findings = append(findings, cve20259074)
+	// Note: CVE-2024-8695, CVE-2024-8696, and CVE-2025-9074 affect Docker Desktop specifically,
+	// which is not part of the image itself but the host system. These would need to be checked
+	// separately through Docker daemon version detection.
 
 	return findings
 }
 
-// scanVulnerablePackages scans for known vulnerable packages
-func (s *VulnerabilityScanner) scanVulnerablePackages(target models.ScanTarget) []models.Finding {
-	var findings []models.Finding
-
-	// Common vulnerable packages
-	vulnerablePackages := map[string]VulnerablePackage{
+// buildVulnerabilityDatabase creates a database of known vulnerabilities
+func (s *VulnerabilityScanner) buildVulnerabilityDatabase() map[string][]VulnerabilityInfo {
+	return map[string][]VulnerabilityInfo{
 		"openssl": {
-			Name:             "openssl",
-			VulnerableVersions: []string{"1.0.1", "1.0.2"},
-			Severity:         models.SeverityHigh,
-			Description:      "OpenSSL versions before 1.1.1 contain multiple critical vulnerabilities including Heartbleed.",
-			FixedVersion:     "1.1.1+",
+			{
+				CVEID:            "CVE-2014-0160",
+				Description:      "Heartbleed vulnerability allows remote attackers to read sensitive memory contents",
+				AffectedVersions: "1.0.1-1.0.1f",
+				FixedVersion:     "1.0.1g",
+				Severity:         models.SeverityCritical,
+				CVSSScore:        7.5,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2014-0160",
+					"https://heartbleed.com/",
+				},
+			},
+			{
+				CVEID:            "CVE-2016-2107",
+				Description:      "Padding oracle vulnerability in AES-NI CBC MAC check",
+				AffectedVersions: "1.0.2-1.0.2g",
+				FixedVersion:     "1.0.2h",
+				Severity:         models.SeverityHigh,
+				CVSSScore:        5.9,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2016-2107",
+				},
+			},
 		},
-		"log4j": {
-			Name:             "log4j",
-			VulnerableVersions: []string{"2.0-2.14.1"},
-			Severity:         models.SeverityCritical,
-			Description:      "Log4Shell vulnerability allows remote code execution.",
-			FixedVersion:     "2.17.1+",
+		"libssl1.0.0": {
+			{
+				CVEID:            "CVE-2014-0160",
+				Description:      "Heartbleed vulnerability allows remote attackers to read sensitive memory contents",
+				AffectedVersions: "1.0.1-1.0.1f",
+				FixedVersion:     "1.0.1g",
+				Severity:         models.SeverityCritical,
+				CVSSScore:        7.5,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2014-0160",
+				},
+			},
 		},
 		"bash": {
-			Name:             "bash",
-			VulnerableVersions: []string{"4.3"},
-			Severity:         models.SeverityHigh,
-			Description:      "Shellshock vulnerability allows arbitrary code execution.",
-			FixedVersion:     "4.4+",
+			{
+				CVEID:            "CVE-2014-6271",
+				Description:      "Shellshock vulnerability allows arbitrary code execution through environment variables",
+				AffectedVersions: "3.0-4.3",
+				FixedVersion:     "4.3-25",
+				Severity:         models.SeverityCritical,
+				CVSSScore:        10.0,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2014-6271",
+					"https://en.wikipedia.org/wiki/Shellshock_(software_bug)",
+				},
+			},
+		},
+		"glibc": {
+			{
+				CVEID:            "CVE-2015-7547",
+				Description:      "Stack-based buffer overflow in glibc DNS resolver",
+				AffectedVersions: "2.9-2.22",
+				FixedVersion:     "2.23",
+				Severity:         models.SeverityCritical,
+				CVSSScore:        8.1,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2015-7547",
+				},
+			},
+		},
+		"libc6": {
+			{
+				CVEID:            "CVE-2015-7547",
+				Description:      "Stack-based buffer overflow in glibc DNS resolver",
+				AffectedVersions: "2.9-2.22",
+				FixedVersion:     "2.23",
+				Severity:         models.SeverityCritical,
+				CVSSScore:        8.1,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2015-7547",
+				},
+			},
+		},
+		"libcurl3": {
+			{
+				CVEID:            "CVE-2023-38545",
+				Description:      "SOCKS5 heap buffer overflow vulnerability",
+				AffectedVersions: "7.69.0-8.3.0",
+				FixedVersion:     "8.4.0",
+				Severity:         models.SeverityHigh,
+				CVSSScore:        7.5,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2023-38545",
+				},
+			},
+		},
+		"curl": {
+			{
+				CVEID:            "CVE-2023-38545",
+				Description:      "SOCKS5 heap buffer overflow vulnerability",
+				AffectedVersions: "7.69.0-8.3.0",
+				FixedVersion:     "8.4.0",
+				Severity:         models.SeverityHigh,
+				CVSSScore:        7.5,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2023-38545",
+				},
+			},
+		},
+		"git": {
+			{
+				CVEID:            "CVE-2022-39253",
+				Description:      "Git credential helper can expose credentials to malicious repository",
+				AffectedVersions: "2.0.0-2.37.3",
+				FixedVersion:     "2.37.4",
+				Severity:         models.SeverityHigh,
+				CVSSScore:        7.5,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2022-39253",
+				},
+			},
+		},
+		"sudo": {
+			{
+				CVEID:            "CVE-2021-3156",
+				Description:      "Baron Samedit - Heap buffer overflow allowing privilege escalation",
+				AffectedVersions: "1.8.2-1.9.5p1",
+				FixedVersion:     "1.9.5p2",
+				Severity:         models.SeverityCritical,
+				CVSSScore:        7.8,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2021-3156",
+				},
+			},
+		},
+		"openssh": {
+			{
+				CVEID:            "CVE-2024-6387",
+				Description:      "RegreSSHion - Race condition in OpenSSH's server (sshd) allows unauthenticated RCE",
+				AffectedVersions: "8.5p1-9.7p1",
+				FixedVersion:     "9.8p1",
+				Severity:         models.SeverityCritical,
+				CVSSScore:        8.1,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2024-6387",
+				},
+			},
+		},
+		"openssh-server": {
+			{
+				CVEID:            "CVE-2024-6387",
+				Description:      "RegreSSHion - Race condition in OpenSSH's server (sshd) allows unauthenticated RCE",
+				AffectedVersions: "8.5p1-9.7p1",
+				FixedVersion:     "9.8p1",
+				Severity:         models.SeverityCritical,
+				CVSSScore:        8.1,
+				References: []string{
+					"https://nvd.nist.gov/vuln/detail/CVE-2024-6387",
+				},
+			},
 		},
 	}
-
-	for _, pkg := range vulnerablePackages {
-		finding := models.Finding{
-			ID:          fmt.Sprintf("VULN-%s", pkg.Name),
-			Title:       fmt.Sprintf("Vulnerable package detected: %s", pkg.Name),
-			Description: pkg.Description,
-			Severity:    pkg.Severity,
-			Category:    "Vulnerability",
-			Source:      "vulnerabilities",
-			Remediation: fmt.Sprintf("Update %s to version %s or later. Rebuild image with updated base.", pkg.Name, pkg.FixedVersion),
-			Metadata: map[string]interface{}{
-				"package":      pkg.Name,
-				"fix_version":  pkg.FixedVersion,
-			},
-		}
-		findings = append(findings, finding)
-	}
-
-	return findings
 }
 
-// checkBaseImageVulns checks for vulnerable base images
-func (s *VulnerabilityScanner) checkBaseImageVulns(target models.ScanTarget) []models.Finding {
-	var findings []models.Finding
+// detectBaseImageFromHistory parses image history to find the FROM instruction
+func (s *VulnerabilityScanner) detectBaseImageFromHistory(history []docker.HistoryEntry) string {
+	// Look for the last FROM instruction in history
+	// History is in reverse order (newest first)
+	fromRegex := regexp.MustCompile(`(?i)FROM\s+([^\s]+)`)
 
-	// Check for outdated base images
-	outdatedImages := []string{
-		"ubuntu:14.04", "ubuntu:16.04", // EOL
-		"debian:7", "debian:8",          // EOL
-		"centos:6", "centos:7",          // EOL
-		"node:10", "node:12",            // EOL
-		"python:2.7",                    // EOL
-	}
-
-	for _, image := range outdatedImages {
-		finding := models.Finding{
-			ID:          "VULN-BASE-IMAGE",
-			Title:       fmt.Sprintf("Outdated base image: %s", image),
-			Description: fmt.Sprintf("Base image %s is end-of-life and no longer receives security updates. This exposes the container to unpatched vulnerabilities.", image),
-			Severity:    models.SeverityHigh,
-			Category:    "Vulnerability",
-			Source:      "vulnerabilities",
-			Remediation: "Update to a supported base image version. Use the latest LTS or stable release.",
-			Metadata: map[string]interface{}{
-				"base_image": image,
-				"status":     "end-of-life",
-			},
+	for i := len(history) - 1; i >= 0; i-- {
+		entry := history[i]
+		if matches := fromRegex.FindStringSubmatch(entry.CreatedBy); matches != nil && len(matches) > 1 {
+			return strings.TrimSpace(matches[1])
 		}
-		findings = append(findings, finding)
 	}
 
-	return findings
+	return ""
 }
 
-// VulnerablePackage represents a package with known vulnerabilities
-type VulnerablePackage struct {
-	Name               string
-	VulnerableVersions []string
-	Severity           models.Severity
-	Description        string
-	FixedVersion       string
+// isVersionVulnerable checks if a version is vulnerable
+func (s *VulnerabilityScanner) isVersionVulnerable(installedVersion, affectedVersions, fixedVersion string) bool {
+	// Parse version ranges (e.g., "1.0.1-1.0.1f" or "2.0-2.14.1")
+	if strings.Contains(affectedVersions, "-") {
+		parts := strings.Split(affectedVersions, "-")
+		if len(parts) == 2 {
+			minVersion := strings.TrimSpace(parts[0])
+			maxVersion := strings.TrimSpace(parts[1])
+
+			// Check if installed version is within vulnerable range
+			if s.compareVersion(installedVersion, minVersion) >= 0 &&
+				s.compareVersion(installedVersion, maxVersion) <= 0 {
+				return true
+			}
+		}
+	}
+
+	// Check if version is less than fixed version
+	if fixedVersion != "" {
+		if s.compareVersion(installedVersion, fixedVersion) < 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isBaseImageVulnerable checks if a base image version is vulnerable
+func (s *VulnerabilityScanner) isBaseImageVulnerable(baseImage, pattern string) bool {
+	// Extract version from base image (e.g., ubuntu:16.04 -> 16.04)
+	imageParts := strings.Split(baseImage, ":")
+	if len(imageParts) < 2 {
+		return false
+	}
+
+	patternParts := strings.Split(pattern, ":")
+	if len(patternParts) < 2 {
+		return false
+	}
+
+	imageVersion := imageParts[1]
+	patternVersion := patternParts[1]
+
+	// Simple version comparison
+	return s.compareVersion(imageVersion, patternVersion) <= 0
+}
+
+// compareVersion compares two version strings
+// Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
+func (s *VulnerabilityScanner) compareVersion(v1, v2 string) int {
+	// Clean version strings
+	v1 = s.cleanVersion(v1)
+	v2 = s.cleanVersion(v2)
+
+	if v1 == v2 {
+		return 0
+	}
+
+	// Split by dots and compare each part
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var p1, p2 string
+		if i < len(parts1) {
+			p1 = parts1[i]
+		} else {
+			p1 = "0"
+		}
+		if i < len(parts2) {
+			p2 = parts2[i]
+		} else {
+			p2 = "0"
+		}
+
+		// Extract numeric part
+		n1 := s.extractNumber(p1)
+		n2 := s.extractNumber(p2)
+
+		if n1 < n2 {
+			return -1
+		}
+		if n1 > n2 {
+			return 1
+		}
+
+		// If numbers are equal, compare suffix
+		s1 := s.extractSuffix(p1)
+		s2 := s.extractSuffix(p2)
+
+		if s1 != s2 {
+			if s1 < s2 {
+				return -1
+			}
+			return 1
+		}
+	}
+
+	return 0
+}
+
+// cleanVersion removes common version prefixes
+func (s *VulnerabilityScanner) cleanVersion(version string) string {
+	version = strings.TrimSpace(version)
+	version = strings.TrimPrefix(version, "v")
+	version = strings.TrimPrefix(version, "V")
+
+	// Remove Debian/Ubuntu epoch (e.g., "1:1.2.3-4" -> "1.2.3-4")
+	if idx := strings.Index(version, ":"); idx > 0 && idx < 3 {
+		version = version[idx+1:]
+	}
+
+	// Remove Debian revision (e.g., "1.2.3-4" -> "1.2.3")
+	if idx := strings.LastIndex(version, "-"); idx > 0 {
+		// Check if it's a Debian revision (numeric after dash)
+		suffix := version[idx+1:]
+		if _, err := strconv.Atoi(suffix); err == nil {
+			version = version[:idx]
+		}
+	}
+
+	return version
+}
+
+// extractNumber extracts the numeric part from a version component
+func (s *VulnerabilityScanner) extractNumber(part string) int {
+	numRegex := regexp.MustCompile(`^\d+`)
+	numStr := numRegex.FindString(part)
+	if numStr == "" {
+		return 0
+	}
+	num, _ := strconv.Atoi(numStr)
+	return num
+}
+
+// extractSuffix extracts the non-numeric suffix from a version component
+func (s *VulnerabilityScanner) extractSuffix(part string) string {
+	numRegex := regexp.MustCompile(`^\d+`)
+	return numRegex.ReplaceAllString(part, "")
+}
+
+// VulnerabilityInfo represents a vulnerability entry
+type VulnerabilityInfo struct {
+	CVEID            string
+	Description      string
+	AffectedVersions string
+	FixedVersion     string
+	Severity         models.Severity
+	CVSSScore        float64
+	References       []string
+}
+
+// VulnerableBaseImage represents a vulnerable base image
+type VulnerableBaseImage struct {
+	Name        string
+	Reason      string
+	Severity    models.Severity
+	Replacement string
+}
+
+// EOLInfo represents end-of-life information
+type EOLInfo struct {
+	Name        string
+	EOLDate     string
+	Risk        string
+	Replacement string
+	Severity    models.Severity
 }

@@ -1,14 +1,13 @@
 package secrets
 
 import (
-	"context"
 	"testing"
 
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 )
 
 func TestNewSecretsScanner(t *testing.T) {
-	scanner := NewSecretsScanner()
+	scanner := NewSecretsScanner(nil)
 	if scanner == nil {
 		t.Fatal("Expected scanner to be created")
 	}
@@ -24,7 +23,7 @@ func TestNewSecretsScanner(t *testing.T) {
 }
 
 func TestSecretsScanner_InitializePatterns(t *testing.T) {
-	scanner := NewSecretsScanner()
+	scanner := NewSecretsScanner(nil)
 
 	expectedPatterns := []string{
 		"AWS_ACCESS_KEY",
@@ -36,6 +35,10 @@ func TestSecretsScanner_InitializePatterns(t *testing.T) {
 		"SLACK_TOKEN",
 		"JWT_TOKEN",
 		"RSA_PRIVATE_KEY",
+		"STRIPE_KEY",
+		"SENDGRID_KEY",
+		"POSTGRES_URL",
+		"MONGODB_URL",
 	}
 
 	for _, patternName := range expectedPatterns {
@@ -45,29 +48,12 @@ func TestSecretsScanner_InitializePatterns(t *testing.T) {
 	}
 }
 
-func TestSecretsScanner_Scan(t *testing.T) {
-	scanner := NewSecretsScanner()
-	target := models.ScanTarget{
-		ImageName: "test:latest",
-	}
-
-	findings, err := scanner.Scan(context.Background(), target)
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-
-	// Should find some findings from the example env vars
-	if len(findings) == 0 {
-		t.Error("Expected to find some secrets in example data")
-	}
-}
-
 func TestSecretsScanner_CalculateEntropy(t *testing.T) {
-	scanner := NewSecretsScanner()
+	scanner := NewSecretsScanner(nil)
 
 	tests := []struct {
-		name     string
-		input    string
+		name       string
+		input      string
 		minEntropy float64
 		maxEntropy float64
 	}{
@@ -90,13 +76,15 @@ func TestSecretsScanner_CalculateEntropy(t *testing.T) {
 }
 
 func TestSecretsScanner_GetSeverityForSecretType(t *testing.T) {
-	scanner := NewSecretsScanner()
+	scanner := NewSecretsScanner(nil)
 
 	criticalTypes := []string{
 		"AWS_ACCESS_KEY",
 		"AWS_SECRET_KEY",
 		"RSA_PRIVATE_KEY",
 		"GCP_SERVICE_ACCOUNT",
+		"OPENSSH_PRIVATE_KEY",
+		"AZURE_CLIENT_SECRET",
 	}
 
 	for _, secretType := range criticalTypes {
@@ -106,15 +94,30 @@ func TestSecretsScanner_GetSeverityForSecretType(t *testing.T) {
 		}
 	}
 
-	// Test non-critical type
-	severity := scanner.getSeverityForSecretType("SOME_OTHER_KEY")
-	if severity != models.SeverityHigh {
-		t.Errorf("Expected HIGH severity for unknown type, got %s", severity)
+	// Test high severity types
+	highTypes := []string{
+		"GITHUB_TOKEN",
+		"SLACK_TOKEN",
+		"STRIPE_KEY",
+		"OPENAI_API_KEY",
+	}
+
+	for _, secretType := range highTypes {
+		severity := scanner.getSeverityForSecretType(secretType)
+		if severity != models.SeverityHigh {
+			t.Errorf("Expected HIGH severity for %s, got %s", secretType, severity)
+		}
+	}
+
+	// Test unknown type defaults to medium
+	severity := scanner.getSeverityForSecretType("SOME_UNKNOWN_KEY")
+	if severity != models.SeverityMedium {
+		t.Errorf("Expected MEDIUM severity for unknown type, got %s", severity)
 	}
 }
 
 func TestSecretsScanner_RedactSecret(t *testing.T) {
-	scanner := NewSecretsScanner()
+	scanner := NewSecretsScanner(nil)
 
 	tests := []struct {
 		name     string
@@ -138,24 +141,69 @@ func TestSecretsScanner_RedactSecret(t *testing.T) {
 }
 
 func TestSecretsScanner_PatternMatching(t *testing.T) {
-	scanner := NewSecretsScanner()
+	scanner := NewSecretsScanner(nil)
 
 	tests := []struct {
 		patternName string
 		testString  string
 		shouldMatch bool
 	}{
+		// AWS patterns
 		{"AWS_ACCESS_KEY", "AKIAIOSFODNN7EXAMPLE", true},
 		{"AWS_ACCESS_KEY", "not-a-key", false},
+		{"AWS_ACCESS_KEY", "AKIA1234567890123456", true},
+
+		// GitHub tokens
 		{"GITHUB_TOKEN", "ghp_123456789012345678901234567890123456", true},
 		{"GITHUB_TOKEN", "not-a-token", false},
+		{"GITHUB_OAUTH", "gho_123456789012345678901234567890123456", true},
+
+		// GitLab tokens
+		{"GITLAB_TOKEN", "glpat-12345678901234567890", true},
+		{"GITLAB_TOKEN", "not-gitlab", false},
+
+		// JWT
 		{"JWT_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", true},
+		{"JWT_TOKEN", "not.a.jwt", false},
+
+		// Private keys
 		{"RSA_PRIVATE_KEY", "-----BEGIN RSA PRIVATE KEY-----", true},
+		{"OPENSSH_PRIVATE_KEY", "-----BEGIN OPENSSH PRIVATE KEY-----", true},
+		{"EC_PRIVATE_KEY", "-----BEGIN EC PRIVATE KEY-----", true},
+		{"DSA_PRIVATE_KEY", "-----BEGIN DSA PRIVATE KEY-----", true},
+
+		// OpenAI
 		{"OPENAI_API_KEY", "sk-123456789012345678901234567890123456789012345678", true},
+		{"OPENAI_API_KEY", "not-openai-key", false},
+
+		// Stripe - using obviously fake test values
+		{"STRIPE_KEY", "sk_test_FAKE00000000000000000000", true},
+		{"STRIPE_KEY", "pk_live_FAKE00000000000000000000", true},
+		{"STRIPE_KEY", "not-stripe-key", false},
+
+		// Slack - using obviously fake test values
+		{"SLACK_TOKEN", "xoxb-0000000000-0000000000-FAKEFAKEFAKEFAKEFAKEFAKE", true},
+		{"SLACK_TOKEN", "not-slack-token", false},
+
+		// SendGrid
+		{"SENDGRID_KEY", "SG.1234567890123456789012.12345678901234567890123456789012345678901234", true},
+
+		// Google API
+		{"GCP_API_KEY", "AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe", true},
+		{"GCP_API_KEY", "not-google-key", false},
+
+		// Database URLs
+		{"POSTGRES_URL", "postgresql://user:pass@localhost:5432/mydb", true},
+		{"MYSQL_URL", "mysql://user:pass@localhost:3306/mydb", true},
+		{"MONGODB_URL", "mongodb://user:pass@localhost:27017/mydb", true},
+		{"MONGODB_URL", "mongodb+srv://user:pass@cluster.mongodb.net/mydb", true},
+
+		// Docker auth
+		{"DOCKER_AUTH", `"auth": "dXNlcjpwYXNz"`, true},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.patternName+"_"+tt.testString, func(t *testing.T) {
+		t.Run(tt.patternName+"_"+tt.testString[:min(20, len(tt.testString))], func(t *testing.T) {
 			pattern, exists := scanner.patterns[tt.patternName]
 			if !exists {
 				t.Fatalf("Pattern %s not found", tt.patternName)
@@ -168,4 +216,41 @@ func TestSecretsScanner_PatternMatching(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSecretsScanner_EntropyThreshold(t *testing.T) {
+	scanner := NewSecretsScanner(nil)
+
+	// Test that high-entropy strings are detected
+	highEntropyStrings := []string{
+		"a9f8g7h6j5k4l3m2n1o0p9q8r7s6t5u4",
+		"xK9mLpQrStUvWxYz1234567890AbCdEf",
+	}
+
+	for _, s := range highEntropyStrings {
+		entropy := scanner.calculateEntropy(s)
+		if entropy <= 4.0 {
+			t.Errorf("Expected high entropy (>4.0) for '%s', got %f", s, entropy)
+		}
+	}
+
+	// Test that low-entropy strings have low entropy
+	lowEntropyStrings := []string{
+		"aaaaaaaaaaa",
+		"123123123123",
+	}
+
+	for _, s := range lowEntropyStrings {
+		entropy := scanner.calculateEntropy(s)
+		if entropy > 3.0 {
+			t.Errorf("Expected low entropy (<3.0) for '%s', got %f", s, entropy)
+		}
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
