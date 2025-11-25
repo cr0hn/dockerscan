@@ -18,7 +18,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/archive"
+	"github.com/moby/go-archive"
 )
 
 // Client wraps Docker operations
@@ -49,9 +49,9 @@ func (c *Client) Ping(ctx context.Context) error {
 
 // ImageExists checks if an image exists locally
 func (c *Client) ImageExists(ctx context.Context, imageName string) (bool, error) {
-	_, _, err := c.cli.ImageInspectWithRaw(ctx, imageName)
+	_, err := c.cli.ImageInspect(ctx, imageName)
 	if err != nil {
-		if client.IsErrNotFound(err) {
+		if strings.Contains(err.Error(), "No such image") {
 			return false, nil
 		}
 		return false, err
@@ -122,7 +122,7 @@ type HistoryEntry struct {
 
 // InspectImage retrieves detailed image information
 func (c *Client) InspectImage(ctx context.Context, imageName string) (*ImageInfo, error) {
-	inspect, _, err := c.cli.ImageInspectWithRaw(ctx, imageName)
+	inspect, err := c.cli.ImageInspect(ctx, imageName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect image: %w", err)
 	}
@@ -245,7 +245,7 @@ func (c *Client) ScanImageFiles(ctx context.Context, imageName string, callback 
 	defer os.RemoveAll(tmpDir)
 
 	// Extract the image tar
-	if err := archive.Untar(reader, tmpDir, nil); err != nil {
+	if err := archive.Unpack(reader, tmpDir, nil); err != nil {
 		return fmt.Errorf("failed to extract image: %w", err)
 	}
 
@@ -376,11 +376,8 @@ func (c *Client) ListPackages(ctx context.Context, imageName string) ([]PackageI
 			packages = append(packages, parseDpkgStatus(content)...)
 		}
 
-		// Detect RPM (RHEL/CentOS/Fedora)
-		if strings.HasSuffix(info.Path, "/var/lib/rpm/Packages") {
-			// RPM database is binary, would need rpm2cpio or similar
-			// For now, just note that it's RPM-based
-		}
+		// Note: RPM (RHEL/CentOS/Fedora) detection would require rpm2cpio parsing
+		// of /var/lib/rpm/Packages which is binary format - not implemented yet
 
 		// Detect Alpine APK
 		if info.Path == "lib/apk/db/installed" || info.Path == "/lib/apk/db/installed" {

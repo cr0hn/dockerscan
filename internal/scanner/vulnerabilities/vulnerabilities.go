@@ -620,7 +620,7 @@ func (s *VulnerabilityScanner) detectBaseImageFromHistory(history []docker.Histo
 
 	for i := len(history) - 1; i >= 0; i-- {
 		entry := history[i]
-		if matches := fromRegex.FindStringSubmatch(entry.CreatedBy); matches != nil && len(matches) > 1 {
+		if matches := fromRegex.FindStringSubmatch(entry.CreatedBy); len(matches) > 1 {
 			return strings.TrimSpace(matches[1])
 		}
 	}

@@ -2,7 +2,10 @@ module github.com/cr0hn/dockerscan/v2
 
 go 1.24.7
 
-require github.com/docker/docker v28.5.2+incompatible
+require (
+	github.com/docker/docker v28.5.2+incompatible
+	github.com/moby/go-archive v0.1.0
+)
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -17,7 +20,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/moby/go-archive v0.1.0 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect

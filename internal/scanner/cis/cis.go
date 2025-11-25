@@ -124,7 +124,7 @@ func (s *CISScanner) checkImageUser(info *docker.ImageInfo) []models.Finding {
 func (s *CISScanner) checkTrustedBaseImage(history []docker.HistoryEntry) []models.Finding {
 	var findings []models.Finding
 
-	if history == nil || len(history) == 0 {
+	if len(history) == 0 {
 		return findings
 	}
 
