@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cr0hn/dockerscan/v2/internal/models"
@@ -682,9 +683,18 @@ func (s *CISScanner) checkExposedPorts(info *docker.ImageInfo) []models.Finding 
 	for _, port := range info.ExposedPorts {
 		allPorts = append(allPorts, port)
 
-		// Extract port number
-		portNum := 0
-		fmt.Sscanf(port, "%d", &portNum)
+		// Extract port number (handle formats like "80/tcp", "443/udp", or just "80")
+		portStr := port
+		if idx := strings.Index(port, "/"); idx != -1 {
+			portStr = port[:idx]
+		}
+
+		portNum, err := strconv.Atoi(portStr)
+		if err != nil {
+			// Skip invalid port formats
+			continue
+		}
+
 		if portNum > 0 && portNum < 1024 {
 			privilegedPorts = append(privilegedPorts, port)
 		}

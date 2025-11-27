@@ -174,7 +174,7 @@ func TestCISScanner_CheckImageTag(t *testing.T) {
 func TestCISScanner_CheckExposedPorts(t *testing.T) {
 	scanner := NewCISScanner(nil)
 
-	// Test with privileged port
+	// Test with privileged ports (with /tcp protocol)
 	info := &docker.ImageInfo{
 		ExposedPorts: []string{"80/tcp", "443/tcp"},
 	}
@@ -187,10 +187,55 @@ func TestCISScanner_CheckExposedPorts(t *testing.T) {
 			if finding.Severity != models.SeverityMedium {
 				t.Errorf("Expected MEDIUM severity for privileged ports, got %s", finding.Severity)
 			}
+			// Verify both ports are detected
+			metadata := finding.Metadata
+			if privPorts, ok := metadata["privileged_ports"].([]string); ok {
+				if len(privPorts) != 2 {
+					t.Errorf("Expected 2 privileged ports, got %d", len(privPorts))
+				}
+			}
 		}
 	}
 	if !found {
 		t.Error("Expected CIS-5.7 finding for privileged ports")
+	}
+
+	// Test with privileged port using /udp protocol
+	info.ExposedPorts = []string{"53/udp", "8080/tcp"}
+	findings = scanner.checkExposedPorts(info)
+	found = false
+	for _, finding := range findings {
+		if finding.ID == "CIS-5.7" {
+			found = true
+			metadata := finding.Metadata
+			if privPorts, ok := metadata["privileged_ports"].([]string); ok {
+				if len(privPorts) != 1 {
+					t.Errorf("Expected 1 privileged port (53/udp), got %d", len(privPorts))
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("Expected CIS-5.7 finding for privileged UDP port")
+	}
+
+	// Test with port without protocol specified
+	info.ExposedPorts = []string{"22", "1024"}
+	findings = scanner.checkExposedPorts(info)
+	found = false
+	for _, finding := range findings {
+		if finding.ID == "CIS-5.7" {
+			found = true
+			metadata := finding.Metadata
+			if privPorts, ok := metadata["privileged_ports"].([]string); ok {
+				if len(privPorts) != 1 {
+					t.Errorf("Expected 1 privileged port (22), got %d: %v", len(privPorts), privPorts)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("Expected CIS-5.7 finding for privileged port without protocol")
 	}
 
 	// Test with non-privileged port
@@ -213,6 +258,35 @@ func TestCISScanner_CheckExposedPorts(t *testing.T) {
 	}
 	if !foundInfo {
 		t.Error("Expected CIS-5.7-INFO finding for many exposed ports")
+	}
+
+	// Test with invalid port formats (should be skipped gracefully)
+	info.ExposedPorts = []string{"invalid/tcp", "not-a-port", "12345/tcp"}
+	findings = scanner.checkExposedPorts(info)
+	// Should not crash and should only detect valid non-privileged port
+	for _, finding := range findings {
+		if finding.ID == "CIS-5.7" {
+			t.Error("Should not report CIS-5.7 for invalid or non-privileged ports")
+		}
+	}
+
+	// Test edge cases: port 1023 (privileged) vs 1024 (non-privileged)
+	info.ExposedPorts = []string{"1023/tcp", "1024/tcp"}
+	findings = scanner.checkExposedPorts(info)
+	found = false
+	for _, finding := range findings {
+		if finding.ID == "CIS-5.7" {
+			found = true
+			metadata := finding.Metadata
+			if privPorts, ok := metadata["privileged_ports"].([]string); ok {
+				if len(privPorts) != 1 || privPorts[0] != "1023/tcp" {
+					t.Errorf("Expected only port 1023/tcp to be privileged, got %v", privPorts)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("Expected CIS-5.7 finding for port 1023 (privileged boundary)")
 	}
 }
 
