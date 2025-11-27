@@ -38,23 +38,42 @@ func (s *RuntimeScanner) Scan(ctx context.Context, target models.ScanTarget) ([]
 	if target.ContainerID != "" {
 		// Scan specific container
 		containersToScan = append(containersToScan, target.ContainerID)
-	} else {
-		// List all running containers
+	} else if target.ImageName != "" {
+		// List containers running the specified image
 		containers, err := s.dockerClient.ListContainers(ctx, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list containers: %w", err)
 		}
 
+		// Normalize image name for comparison (remove tag if needed)
+		targetImage := target.ImageName
+		targetImageNoTag := strings.Split(targetImage, ":")[0]
+
 		for _, container := range containers {
 			if container.State == "running" {
-				containersToScan = append(containersToScan, container.ID)
+				// Check if container is using the target image
+				containerImage := container.Image
+				containerImageNoTag := strings.Split(containerImage, ":")[0]
+
+				// Match by full name or name without tag
+				if containerImage == targetImage ||
+					containerImageNoTag == targetImageNoTag {
+					containersToScan = append(containersToScan, container.ID)
+				}
 			}
 		}
 	}
 
-	// If no containers found, return empty findings
+	// If no containers found for this image, return info message
 	if len(containersToScan) == 0 {
-		return findings, nil
+		return []models.Finding{{
+			ID:          "RUNTIME-NO-CONTAINERS",
+			Title:       "No running containers found for this image",
+			Description: fmt.Sprintf("No running containers using image '%s' were found. Runtime security checks only apply to running containers.", target.ImageName),
+			Severity:    models.SeverityInfo,
+			Category:    "Runtime-Security",
+			Source:      "runtime-security",
+		}}, nil
 	}
 
 	// Scan each container
