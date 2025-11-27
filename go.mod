@@ -5,7 +5,9 @@ go 1.24.7
 require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/docker/docker v28.5.2+incompatible
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/moby/go-archive v0.1.0
+	github.com/olekukonko/tablewriter v1.1.1
 )
 
 require (
@@ -37,7 +39,6 @@ require (
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
 	github.com/olekukonko/errors v1.1.0 // indirect
 	github.com/olekukonko/ll v0.1.2 // indirect
-	github.com/olekukonko/tablewriter v1.1.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
