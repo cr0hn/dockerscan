@@ -230,7 +230,10 @@ func printFindingsTable(findings []models.Finding) {
 
 	fmt.Println()
 
-	table := tablewriter.NewWriter(os.Stdout)
+	table := tablewriter.NewTable(os.Stdout,
+		tablewriter.WithRowAutoWrap(60),
+		tablewriter.WithMaxWidth(120),
+	)
 	table.Header("#", "Severity", "ID", "Details")
 
 	// Findings rows
@@ -243,12 +246,12 @@ func printFindingsTable(findings []models.Finding) {
 		details.WriteString(finding.Title)
 
 		if finding.Description != "" {
-			details.WriteString("\n\nDescription: ")
+			details.WriteString("\nDescription: ")
 			details.WriteString(finding.Description)
 		}
 
 		if finding.Remediation != "" {
-			details.WriteString("\n\n💡 Remediation: ")
+			details.WriteString("\n💡 Remediation: ")
 			details.WriteString(finding.Remediation)
 		}
 
