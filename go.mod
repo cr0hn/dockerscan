@@ -5,6 +5,7 @@ go 1.24.7
 require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/docker/docker v28.5.2+incompatible
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/moby/go-archive v0.1.0
 	github.com/olekukonko/tablewriter v1.1.1
 	modernc.org/sqlite v1.40.1
