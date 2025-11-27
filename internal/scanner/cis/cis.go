@@ -542,7 +542,9 @@ func (s *CISScanner) checkSecrets(ctx context.Context, imageName string) []model
 		"Generic Password Hash":   regexp.MustCompile(`\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}`),
 	}
 
-	matches, err := s.dockerClient.SearchFileContent(ctx, imageName, patterns, 10*1024*1024)
+	const maxFileSize = 10 * 1024 * 1024 // Max 10MB per file
+	const maxMatches = 10000             // Limit matches to prevent memory exhaustion
+	matches, err := s.dockerClient.SearchFileContent(ctx, imageName, patterns, maxFileSize, maxMatches)
 	if err != nil {
 		return findings
 	}
