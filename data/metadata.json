@@ -1,0 +1,9 @@
+{
+  "version": "2025.11.27.1529",
+  "last_modified": "2025-11-27T15:29:50Z",
+  "cve_count": 103352,
+  "db_size_uncompressed": "145M",
+  "checksum_sha256": "0a999536f3cbb44dcb00561f7cb7b31571ded92c6f70f17fde4bb74ebb04f5de",
+  "date_range_start": "2023-05-27",
+  "date_range_end": "2025-11-27"
+}
