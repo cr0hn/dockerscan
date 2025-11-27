@@ -165,6 +165,14 @@ DockerScan v2.0 is a **complete rewrite** from the ground up. Here's what change
 - ✅ **Registry Operations** - Push, pull, delete operations (coming soon in v2.1)
 - ✅ **Network Scanning** - Docker registry discovery (coming soon in v2.1)
 
+### New in v2.0.4
+
+- 🗄️ **CVE Database Integration** - Local SQLite database with NVD data
+- ⚡ **Parallel CVE Downloads** - 4 workers for faster database updates
+- 🔄 **Retry with Backoff** - Automatic retry for rate-limited requests
+- 📦 **`--from-file` flag** - Install CVE database from local file
+- 🔇 **Quiet mode (`-q`)** - Suppress banner for CI/CD pipelines
+
 ### Why the Rewrite?
 
 1. **Performance** - Go provides 10x faster scanning with goroutines
@@ -256,6 +264,18 @@ go install github.com/cr0hn/dockerscan/v2/cmd/dockerscan@latest
 
 ## 🚀 Quick Start
 
+### First-Time Setup (Required)
+
+Before scanning, you need to download the CVE database:
+
+```bash
+# Download CVE database from GitHub (recommended)
+dockerscan update-db
+
+# Or install from a local file (for testing/offline use)
+dockerscan update-db --from-file /path/to/cve-db.sqlite
+```
+
 ### Basic Scan
 
 ```bash
@@ -267,6 +287,9 @@ dockerscan --scanners cis,secrets ubuntu:22.04
 
 # Scan and save reports
 dockerscan alpine:latest --output /tmp/reports
+
+# Quiet mode (suppress banner)
+dockerscan -q nginx:latest
 ```
 
 ### Example Output
@@ -319,18 +342,30 @@ dockerscan alpine:latest --output /tmp/reports
 ### Command Line Options
 
 ```bash
-dockerscan [OPTIONS] IMAGE_NAME
+dockerscan [COMMAND] [OPTIONS] <IMAGE>
+
+Commands:
+  scan        Scan a Docker image (default)
+  update-db   Download or update the CVE database
+              Options: --from-file <path>  Install from local SQLite file
+  version     Show version information
+  help        Show help message
 
 Options:
   -h, --help              Show help message
   -v, --version           Show version
+  -q, --quiet             Suppress banner output (quiet mode)
   --scanners SCANNERS     Comma-separated list of scanners to run
                           (default: all)
                           Options: cis,secrets,supplychain,vulnerabilities,runtime
   --output DIR            Output directory for reports (default: .)
-  --format FORMAT         Output format: json, sarif, or both (default: both)
   --only-critical         Show only critical/high severity findings
   --verbose               Verbose output
+
+Exit Codes:
+  0   No issues found
+  1   HIGH severity issues found
+  2   CRITICAL severity found
 ```
 
 ### Examples
@@ -513,11 +548,16 @@ jobs:
       - name: Build Docker image
         run: docker build -t myapp:${{ github.sha }} .
 
-      - name: Run DockerScan
+      - name: Install DockerScan
         run: |
           curl -L https://github.com/cr0hn/dockerscan/releases/latest/download/dockerscan-linux-amd64 -o dockerscan
           chmod +x dockerscan
-          ./dockerscan myapp:${{ github.sha }}
+
+      - name: Update CVE Database
+        run: ./dockerscan update-db
+
+      - name: Run Security Scan
+        run: ./dockerscan -q myapp:${{ github.sha }}
 
       - name: Upload SARIF results
         uses: github/codeql-action/upload-sarif@v2
@@ -533,7 +573,8 @@ docker-security-scan:
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
     - wget https://github.com/cr0hn/dockerscan/releases/latest/download/dockerscan-linux-amd64 -O dockerscan
     - chmod +x dockerscan
-    - ./dockerscan $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - ./dockerscan update-db
+    - ./dockerscan -q $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
   artifacts:
     reports:
       sast: dockerscan-report.sarif
@@ -657,6 +698,48 @@ dockerscan-v2/
 └── pkg/docker/             # Docker client wrapper
     └── client.go
 ```
+
+### CVE Database & nvd2sqlite Tool
+
+DockerScan uses a local SQLite database for CVE lookups. The database is automatically updated via GitHub Actions every 6 hours.
+
+#### Updating the Database
+
+```bash
+# Download latest database from GitHub
+dockerscan update-db
+
+# Install from local file (for testing/air-gapped environments)
+dockerscan update-db --from-file /path/to/cve-db.sqlite
+```
+
+#### Building the Database Manually (nvd2sqlite)
+
+For advanced users, you can build the CVE database from NVD directly:
+
+```bash
+# Build the tool
+make build  # Builds both dockerscan and nvd2sqlite
+
+# Download CVEs (last 2.5 years by default)
+./bin/nvd2sqlite --output data/cve-db.sqlite --verbose
+
+# With NVD API key (10x faster - 50 req/30sec vs 5 req/30sec)
+NVD_API_KEY=your-key ./bin/nvd2sqlite --output data/cve-db.sqlite --verbose
+
+# Custom date range
+./bin/nvd2sqlite --output data/cve-db.sqlite \
+  --start-date 2023-01-01 \
+  --end-date 2024-12-31
+```
+
+**nvd2sqlite features:**
+- ⚡ **4 parallel download workers** for faster downloads
+- 🔄 **Automatic retry with exponential backoff** for rate limiting (HTTP 429)
+- 📦 **Downloads to temp directory**, then processes sequentially
+- 🗄️ **SQLite output** with indexed tables for fast lookups
+
+---
 
 ### Extensibility
 
