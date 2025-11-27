@@ -8,7 +8,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -19,12 +23,15 @@ const (
 	maxDateRangeDays = 120 // NVD API max date range
 	defaultRateLimit = 5   // Requests per 30 seconds without API key
 	resultsPerPage   = 2000
+	numDownloaders   = 4   // Number of parallel download workers
+	maxRetries       = 5   // Max retries for rate-limited requests
+	baseBackoff      = 30 * time.Second // Base backoff for 429 errors
 )
 
 // Command-line flags
 var (
 	outputPath = flag.String("output", "", "Output SQLite file path (required)")
-	startDate  = flag.String("start-date", "", "Start date for CVEs (YYYY-MM-DD, default: 5 years ago)")
+	startDate  = flag.String("start-date", "", "Start date for CVEs (YYYY-MM-DD, default: 2.5 years ago)")
 	endDate    = flag.String("end-date", "", "End date for CVEs (YYYY-MM-DD, default: now)")
 	apiKey     = flag.String("api-key", "", "NVD API key (optional, env: NVD_API_KEY)")
 	rateLimit  = flag.Int("rate-limit", defaultRateLimit, "Requests per 30 seconds")
@@ -71,6 +78,21 @@ type NVDResponse struct {
 			} `json:"references"`
 		} `json:"cve"`
 	} `json:"vulnerabilities"`
+}
+
+// downloadTask represents a single download job
+type downloadTask struct {
+	chunk      dateChunk
+	chunkIndex int
+	startIndex int
+	pageIndex  int
+}
+
+// downloadResult represents the result of a download
+type downloadResult struct {
+	task     downloadTask
+	filePath string
+	err      error
 }
 
 // Predefined package aliases
@@ -205,7 +227,7 @@ func main() {
 	var err error
 
 	if *startDate == "" {
-		start = time.Now().AddDate(-5, 0, 0) // 5 years ago
+		start = time.Now().AddDate(-2, -6, 0) // 2.5 years ago
 	} else {
 		start, err = time.Parse("2006-01-02", *startDate)
 		if err != nil {
@@ -226,9 +248,33 @@ func main() {
 
 	// Banner
 	fmt.Println("nvd2sqlite - NVD to SQLite Converter")
+	fmt.Printf("  Using %d parallel downloaders\n", numDownloaders)
 	fmt.Println()
 
-	// Create/open database
+	// Create temporary directory for downloads
+	tmpDir, err := os.MkdirTemp("", "nvd2sqlite-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating temp directory: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if *verbose {
+		fmt.Printf("  Temp directory: %s\n", tmpDir)
+	}
+
+	// Phase 1: Download CVEs in parallel
+	fmt.Printf("Phase 1: Downloading CVEs from %s to %s...\n", start.Format("2006-01-02"), end.Format("2006-01-02"))
+	downloadedFiles, err := downloadCVEsParallel(tmpDir, start, end)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error downloading CVEs: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("  Downloaded %d files\n\n", len(downloadedFiles))
+
+	// Phase 2: Create/open database and process files sequentially
+	fmt.Println("Phase 2: Processing downloaded files...")
 	db, err := initDatabase(*outputPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing database: %v\n", err)
@@ -236,11 +282,9 @@ func main() {
 	}
 	defer db.Close()
 
-	// Download CVEs
-	fmt.Printf("Downloading CVEs from %s to %s...\n", start.Format("2006-01-02"), end.Format("2006-01-02"))
-	totalCVEs, totalProducts, err := downloadCVEs(db, start, end)
+	totalCVEs, totalProducts, err := processDownloadedFiles(db, downloadedFiles)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error downloading CVEs: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error processing files: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -333,56 +377,185 @@ func initDatabase(path string) (*sql.DB, error) {
 	return db, err
 }
 
-func downloadCVEs(db *sql.DB, start, end time.Time) (int, int, error) {
-	// Calculate date chunks (120-day max)
+// downloadCVEsParallel downloads CVEs using multiple workers in parallel
+func downloadCVEsParallel(tmpDir string, start, end time.Time) ([]string, error) {
 	chunks := calculateDateChunks(start, end)
 
+	// First, we need to discover all pages for each chunk
+	// This requires sequential queries to get TotalResults
+	fmt.Printf("  Discovering pages for %d date chunks...\n", len(chunks))
+
+	var allTasks []downloadTask
+	var tasksMu sync.Mutex
+
+	// Rate limiter shared across all workers
+	rateLimiter := time.NewTicker(time.Duration(30000.0/float64(*rateLimit)) * time.Millisecond)
+	defer rateLimiter.Stop()
+
+	// Discover tasks sequentially (we need TotalResults from each chunk)
+	for i, chunk := range chunks {
+		<-rateLimiter.C
+
+		url := buildNVDURL(chunk.start, chunk.end, 0)
+		resp, err := queryNVD(url)
+		if err != nil {
+			return nil, fmt.Errorf("discover chunk %d: %w", i+1, err)
+		}
+
+		// Calculate number of pages needed
+		totalPages := (resp.TotalResults + resultsPerPage - 1) / resultsPerPage
+		if totalPages == 0 {
+			totalPages = 1
+		}
+
+		if *verbose {
+			fmt.Printf("    Chunk %d/%d (%s to %s): %d CVEs, %d pages\n",
+				i+1, len(chunks),
+				chunk.start.Format("2006-01-02"), chunk.end.Format("2006-01-02"),
+				resp.TotalResults, totalPages)
+		}
+
+		// Save first page (we already have it)
+		filePath := filepath.Join(tmpDir, fmt.Sprintf("chunk%03d_page%03d.json", i, 0))
+		if err := saveResponse(resp, filePath); err != nil {
+			return nil, fmt.Errorf("save first page: %w", err)
+		}
+
+		tasksMu.Lock()
+		// Add remaining pages as tasks
+		for page := 1; page < totalPages; page++ {
+			allTasks = append(allTasks, downloadTask{
+				chunk:      chunk,
+				chunkIndex: i,
+				startIndex: page * resultsPerPage,
+				pageIndex:  page,
+			})
+		}
+		tasksMu.Unlock()
+	}
+
+	fmt.Printf("  Downloading %d additional pages with %d workers...\n", len(allTasks), numDownloaders)
+
+	// Channel for tasks
+	taskChan := make(chan downloadTask, len(allTasks))
+	resultChan := make(chan downloadResult, len(allTasks))
+
+	// Start workers
+	var wg sync.WaitGroup
+	var downloadedCount int64
+
+	for w := 0; w < numDownloaders; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			for task := range taskChan {
+				// Rate limit
+				<-rateLimiter.C
+
+				url := buildNVDURL(task.chunk.start, task.chunk.end, task.startIndex)
+				resp, err := queryNVD(url)
+
+				if err != nil {
+					resultChan <- downloadResult{task: task, err: err}
+					continue
+				}
+
+				filePath := filepath.Join(tmpDir, fmt.Sprintf("chunk%03d_page%03d.json", task.chunkIndex, task.pageIndex))
+				if err := saveResponse(resp, filePath); err != nil {
+					resultChan <- downloadResult{task: task, err: err}
+					continue
+				}
+
+				resultChan <- downloadResult{task: task, filePath: filePath}
+
+				count := atomic.AddInt64(&downloadedCount, 1)
+				if *verbose {
+					fmt.Printf("    [Worker %d] Downloaded page %d of chunk %d (%d/%d)\n",
+						workerID, task.pageIndex, task.chunkIndex+1, count, len(allTasks))
+				}
+			}
+		}(w)
+	}
+
+	// Send all tasks
+	for _, task := range allTasks {
+		taskChan <- task
+	}
+	close(taskChan)
+
+	// Wait for all workers to finish
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Collect results
+	var errors []error
+	for result := range resultChan {
+		if result.err != nil {
+			errors = append(errors, fmt.Errorf("chunk %d page %d: %w",
+				result.task.chunkIndex+1, result.task.pageIndex, result.err))
+		}
+	}
+
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("download errors: %v", errors)
+	}
+
+	// Collect all downloaded files
+	files, err := filepath.Glob(filepath.Join(tmpDir, "*.json"))
+	if err != nil {
+		return nil, err
+	}
+
+	// Sort files to ensure consistent processing order
+	sort.Strings(files)
+
+	return files, nil
+}
+
+// saveResponse saves an NVD response to a JSON file
+func saveResponse(resp *NVDResponse, filePath string) error {
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filePath, data, 0644)
+}
+
+// processDownloadedFiles processes all downloaded JSON files sequentially
+func processDownloadedFiles(db *sql.DB, files []string) (int, int, error) {
 	totalCVEs := 0
 	totalProducts := 0
 
-	// Rate limiter
-	rateLimiter := time.NewTicker(time.Duration(30000.0 / float64(*rateLimit)) * time.Millisecond)
-	defer rateLimiter.Stop()
+	for i, filePath := range files {
+		if *verbose {
+			fmt.Printf("  Processing file %d/%d: %s\n", i+1, len(files), filepath.Base(filePath))
+		}
 
-	for i, chunk := range chunks {
-		fmt.Printf("  Processing %s to %s (chunk %d/%d)...\n",
-			chunk.start.Format("2006-01-02"), chunk.end.Format("2006-01-02"), i+1, len(chunks))
+		// Read and parse file
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return totalCVEs, totalProducts, fmt.Errorf("read file %s: %w", filePath, err)
+		}
 
-		startIndex := 0
-		for {
-			// Rate limit
-			<-rateLimiter.C
+		var resp NVDResponse
+		if err := json.Unmarshal(data, &resp); err != nil {
+			return totalCVEs, totalProducts, fmt.Errorf("parse file %s: %w", filePath, err)
+		}
 
-			// Query NVD API
-			url := buildNVDURL(chunk.start, chunk.end, startIndex)
-			resp, err := queryNVD(url)
-			if err != nil {
-				return totalCVEs, totalProducts, fmt.Errorf("query NVD API: %w", err)
-			}
+		// Insert CVEs
+		cveCount, prodCount, err := insertCVEs(db, &resp)
+		if err != nil {
+			return totalCVEs, totalProducts, fmt.Errorf("insert CVEs from %s: %w", filePath, err)
+		}
 
-			if len(resp.Vulnerabilities) == 0 {
-				break
-			}
+		totalCVEs += cveCount
+		totalProducts += prodCount
 
-			// Insert CVEs
-			cveCount, prodCount, err := insertCVEs(db, resp)
-			if err != nil {
-				return totalCVEs, totalProducts, fmt.Errorf("insert CVEs: %w", err)
-			}
-
-			totalCVEs += cveCount
-			totalProducts += prodCount
-
-			if *verbose {
-				fmt.Printf("    Page %d: %d CVEs\n", (startIndex/resultsPerPage)+1, cveCount)
-			}
-
-			// Check if there are more results
-			if startIndex+resultsPerPage >= resp.TotalResults {
-				break
-			}
-
-			startIndex += resultsPerPage
+		if !*verbose && (i+1)%10 == 0 {
+			fmt.Printf("  Processed %d/%d files (%d CVEs so far)\n", i+1, len(files), totalCVEs)
 		}
 	}
 
@@ -427,30 +600,51 @@ func buildNVDURL(start, end time.Time, startIndex int) string {
 func queryNVD(url string) (*NVDResponse, error) {
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("User-Agent", "dockerscan-nvd2sqlite/2.0")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		// Handle rate limiting (429)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			backoff := baseBackoff * time.Duration(1<<attempt) // Exponential backoff
+			if *verbose {
+				fmt.Printf("    ⚠️  Rate limited (429), waiting %v before retry %d/%d...\n",
+					backoff, attempt+1, maxRetries)
+			}
+			time.Sleep(backoff)
+			lastErr = fmt.Errorf("rate limited (attempt %d)", attempt+1)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		}
+
+		var nvdResp NVDResponse
+		if err := json.NewDecoder(resp.Body).Decode(&nvdResp); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+
+		return &nvdResp, nil
 	}
 
-	req.Header.Set("User-Agent", "dockerscan-nvd2sqlite/2.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	var nvdResp NVDResponse
-	if err := json.NewDecoder(resp.Body).Decode(&nvdResp); err != nil {
-		return nil, err
-	}
-
-	return &nvdResp, nil
+	return nil, fmt.Errorf("max retries exceeded: %w", lastErr)
 }
 
 func insertCVEs(db *sql.DB, resp *NVDResponse) (int, int, error) {
@@ -639,10 +833,10 @@ func updateMetadata(db *sql.DB, totalCVEs int) error {
 	defer stmt.Close()
 
 	metadata := map[string]string{
-		"version":       "1.0",
-		"created_at":    time.Now().Format(time.RFC3339),
-		"nvd_source":    "NVD API 2.0",
-		"total_cves":    fmt.Sprintf("%d", totalCVEs),
+		"version":        "1.0",
+		"created_at":     time.Now().Format(time.RFC3339),
+		"nvd_source":     "NVD API 2.0",
+		"total_cves":     fmt.Sprintf("%d", totalCVEs),
 		"schema_version": "1",
 	}
 

@@ -26,11 +26,14 @@ help: ## Show this help
 	@echo "Available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
-build: ## Build the binary
+build: ## Build all binaries (dockerscan, nvd2sqlite)
 	@echo "🔨 Building DockerScan v$(VERSION)..."
 	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dockerscan
 	@echo "✅ Binary built: $(BUILD_DIR)/$(BINARY_NAME)"
+	@echo "🔨 Building nvd2sqlite..."
+	$(GOBUILD) -o $(BUILD_DIR)/nvd2sqlite ./cmd/nvd2sqlite
+	@echo "✅ Binary built: $(BUILD_DIR)/nvd2sqlite"
 
 build-all: ## Build for all platforms
 	@echo "🔨 Building for all platforms..."

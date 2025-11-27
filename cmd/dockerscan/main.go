@@ -347,9 +347,16 @@ func generateReports(result *models.ScanResult, cfg *config.Config) error {
 }
 
 func handleUpdateDB() error {
-	fmt.Println("\n🔄 Downloading CVE database...")
-
 	dbPath := expandPath(defaultDBPath)
+
+	// Check for --from-file flag (install from local file)
+	fromFile := getFlagValue("--from-file")
+	if fromFile != "" {
+		return installDBFromFile(fromFile, dbPath)
+	}
+
+	// Normal download flow
+	fmt.Println("\n🔄 Downloading CVE database...")
 
 	downloader := cvedb.NewDownloader(
 		config.DefaultCVEDBURL,
@@ -378,6 +385,47 @@ func handleUpdateDB() error {
 
 	fmt.Println("\n✅ Database updated successfully!")
 	printDBInfo(dbPath)
+	return nil
+}
+
+func installDBFromFile(srcPath, destPath string) error {
+	fmt.Printf("\n📦 Installing CVE database from local file: %s\n", srcPath)
+
+	// Check source file exists
+	srcInfo, err := os.Stat(srcPath)
+	if err != nil {
+		return fmt.Errorf("source file not found: %w", err)
+	}
+
+	// Ensure destination directory exists
+	destDir := filepath.Dir(destPath)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Copy file
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer src.Close()
+
+	dest, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer dest.Close()
+
+	written, err := dest.ReadFrom(src)
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	fmt.Printf("   Copied %.2f MB\n", float64(written)/(1024*1024))
+	fmt.Printf("   Source size: %.2f MB\n", float64(srcInfo.Size())/(1024*1024))
+
+	fmt.Println("\n✅ Database installed successfully!")
+	printDBInfo(destPath)
 	return nil
 }
 
@@ -454,6 +502,20 @@ func getImageName() string {
 	return ""
 }
 
+// getFlagValue returns the value of a flag like --flag <value>
+func getFlagValue(flag string) string {
+	for i, arg := range os.Args {
+		if arg == flag && i+1 < len(os.Args) {
+			return os.Args[i+1]
+		}
+		// Handle --flag=value format
+		if strings.HasPrefix(arg, flag+"=") {
+			return strings.TrimPrefix(arg, flag+"=")
+		}
+	}
+	return ""
+}
+
 func printUsage() {
 	fmt.Printf(`
 Usage: dockerscan [command] [options] <image>
@@ -461,6 +523,7 @@ Usage: dockerscan [command] [options] <image>
 Commands:
   scan        Scan a Docker image (default)
   update-db   Download or update the CVE database
+              Options: --from-file <path>  Install from local SQLite file
   version     Show version information
   help        Show this help message
 
@@ -484,6 +547,7 @@ EXAMPLES
   First-time setup (required before scanning):
   ─────────────────────────────────────────────
     $ dockerscan update-db
+    $ dockerscan update-db --from-file /path/to/cve-db.sqlite  # From local file
 
   Basic image scan:
   ─────────────────────────────────────────────
