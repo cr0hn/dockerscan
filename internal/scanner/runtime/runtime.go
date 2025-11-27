@@ -10,6 +10,13 @@ import (
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
 )
 
+// Severity Guidelines:
+// CRITICAL: Container escape, host compromise, credential exposure
+// HIGH: Privilege escalation, running as root, reproducibility issues
+// MEDIUM: Missing security controls, operational issues
+// LOW: Best practice violations, informational
+// INFO: Positive findings, recommendations
+
 // RuntimeScanner checks runtime security configurations
 type RuntimeScanner struct {
 	scanner.BaseScanner
@@ -616,7 +623,7 @@ func (s *RuntimeScanner) checkUserConfig(container *docker.ContainerInfo) []mode
 			ID:          fmt.Sprintf("RUNTIME-USER-ROOT-%s", container.ID[:12]),
 			Title:       fmt.Sprintf("Container '%s' running as root", container.Name),
 			Description: "Container is running as root user (UID 0). If an attacker compromises the application, they will have root privileges inside the container, making privilege escalation easier.",
-			Severity:    models.SeverityMedium,
+			Severity:    models.SeverityHigh,
 			Category:    "Runtime-Security",
 			Source:      "runtime-security",
 			Remediation: "Run container as non-root user using --user flag or USER instruction in Dockerfile. Create a dedicated user with minimal privileges.",

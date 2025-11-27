@@ -12,6 +12,13 @@ import (
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
 )
 
+// Severity Guidelines:
+// CRITICAL: Container escape, host compromise, credential exposure
+// HIGH: Privilege escalation, running as root, reproducibility issues
+// MEDIUM: Missing security controls, operational issues
+// LOW: Best practice violations, informational
+// INFO: Positive findings, recommendations
+
 // CISScanner implements CIS Docker Benchmark v1.7.0 checks
 type CISScanner struct {
 	scanner.BaseScanner
@@ -307,7 +314,7 @@ func (s *CISScanner) checkHealthcheck(info *docker.ImageInfo) []models.Finding {
 			ID:          "CIS-4.6",
 			Title:       "No HEALTHCHECK instruction defined",
 			Description: "The image does not define a HEALTHCHECK instruction. Without a health check, Docker has no way to determine if the container is still functioning correctly.",
-			Severity:    models.SeverityLow,
+			Severity:    models.SeverityMedium,
 			Category:    "CIS-Benchmark",
 			Source:      "cis-benchmark",
 			Remediation: "Add a HEALTHCHECK instruction in your Dockerfile. Example:\n  HEALTHCHECK --interval=30s --timeout=3s --retries=3 \\\n    CMD curl -f http://localhost:8080/health || exit 1",
@@ -334,7 +341,7 @@ func (s *CISScanner) checkImageTag(imageName string, info *docker.ImageInfo) []m
 			ID:          "CIS-4.7",
 			Title:       "Image uses 'latest' tag or no specific tag",
 			Description: "Using the 'latest' tag or not specifying a tag makes it unclear which exact version is deployed and can lead to inconsistent deployments across environments.",
-			Severity:    models.SeverityMedium,
+			Severity:    models.SeverityHigh,
 			Category:    "CIS-Benchmark",
 			Source:      "cis-benchmark",
 			Remediation: "Always use specific, immutable version tags. Example: nginx:1.25.3 instead of nginx:latest. Consider using image digests for maximum reproducibility: nginx@sha256:abc123...",
@@ -818,7 +825,7 @@ func (s *CISScanner) checkWorldWritableFiles(ctx context.Context, imageName stri
 			ID:          "CIS-WORLD-WRITABLE",
 			Title:       fmt.Sprintf("Found %d world-writable files", len(worldWritableFiles)),
 			Description: "World-writable files can be modified by any user, potentially allowing attackers to inject malicious content or modify application behavior.",
-			Severity:    models.SeverityMedium,
+			Severity:    models.SeverityHigh,
 			Category:    "CIS-Benchmark",
 			Source:      "cis-benchmark",
 			Remediation: "Remove world-writable permissions:\n  RUN find / -xdev -perm -0002 -type f -exec chmod o-w {} \\;",
