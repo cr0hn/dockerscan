@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/cr0hn/dockerscan/v2/internal/config"
+	"github.com/cr0hn/dockerscan/v2/internal/cvedb"
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 	"github.com/cr0hn/dockerscan/v2/internal/report"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner"
@@ -21,9 +23,45 @@ import (
 	"github.com/olekukonko/tablewriter/tw"
 )
 
+const (
+	defaultDBPath = "~/.dockerscan/cve-db.sqlite"
+)
+
 func main() {
 	// Print banner
 	fmt.Print(config.Banner())
+
+	// Handle subcommands
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "update-db":
+			if err := handleUpdateDB(); err != nil {
+				fmt.Fprintf(os.Stderr, "\n❌ Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "version", "--version", "-v":
+			fmt.Printf("dockerscan %s\n", config.Version)
+			return
+		case "help", "--help", "-h":
+			printUsage()
+			return
+		}
+	}
+
+	// Initialize CVE database (REQUIRED)
+	dbPath := expandPath(defaultDBPath)
+	cveDB, err := cvedb.Open(dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n❌ Error: CVE database not available.\n")
+		fmt.Fprintf(os.Stderr, "   Run 'dockerscan update-db' to download the vulnerability database.\n")
+		fmt.Fprintf(os.Stderr, "   Details: %v\n\n", err)
+		os.Exit(1)
+	}
+	defer cveDB.Close()
+
+	// Warn if database is outdated
+	warnIfOutdated(cveDB)
 
 	// Parse CLI arguments
 	ctx := context.Background()
@@ -32,11 +70,7 @@ func main() {
 	// Get image name from args
 	// Support both: dockerscan <image> and dockerscan scan <image>
 	if len(os.Args) < 2 {
-		fmt.Println("\nUsage: dockerscan [scan] <image-name>")
-		fmt.Println("\nExample:")
-		fmt.Println("  dockerscan nginx:latest")
-		fmt.Println("  dockerscan scan nginx:latest")
-		fmt.Println("  dockerscan --format sarif --output report.sarif ubuntu:22.04")
+		printUsage()
 		os.Exit(1)
 	}
 
@@ -68,7 +102,7 @@ func main() {
 	registry.Register(cis.NewCISScanner(dockerClient))
 	registry.Register(secrets.NewSecretsScanner(dockerClient))
 	registry.Register(supplychain.NewSupplyChainScanner(dockerClient))
-	registry.Register(vulnerabilities.NewVulnerabilityScanner(dockerClient))
+	registry.Register(vulnerabilities.NewVulnerabilityScanner(dockerClient, cveDB))
 	registry.Register(runtime.NewRuntimeScanner(dockerClient))
 
 	fmt.Printf("\n🔍 Scanning image: %s\n", imageName)
@@ -304,4 +338,100 @@ func generateReports(result *models.ScanResult, cfg *config.Config) error {
 	fmt.Printf("📄 SARIF report saved to: dockerscan-report.sarif\n")
 
 	return nil
+}
+
+func handleUpdateDB() error {
+	fmt.Println("\n🔄 Downloading CVE database...")
+
+	dbPath := expandPath(defaultDBPath)
+
+	downloader := cvedb.NewDownloader(
+		config.DefaultCVEDBURL,
+		config.DefaultCVEChecksumURL,
+		dbPath,
+	)
+
+	// Check if update needed
+	needsUpdate, _, err := downloader.NeedsUpdate()
+	if err != nil {
+		// If error checking, try to download anyway
+		needsUpdate = true
+	}
+
+	if !needsUpdate {
+		fmt.Println("✅ Database is already up to date.")
+		printDBInfo(dbPath)
+		return nil
+	}
+
+	// Download
+	ctx := context.Background()
+	if err := downloader.Download(ctx); err != nil {
+		return fmt.Errorf("download failed: %w", err)
+	}
+
+	fmt.Println("\n✅ Database updated successfully!")
+	printDBInfo(dbPath)
+	return nil
+}
+
+func printDBInfo(dbPath string) {
+	db, err := cvedb.Open(dbPath)
+	if err != nil {
+		return
+	}
+	defer db.Close()
+
+	meta, err := db.GetMetadata()
+	if err != nil {
+		return
+	}
+
+	fmt.Printf("   Version:    %s\n", meta.Version)
+	fmt.Printf("   Generated:  %s\n", meta.LastModified.Format("2006-01-02 15:04"))
+	fmt.Printf("   Total CVEs: %d\n", meta.CVECount)
+	fmt.Printf("   Location:   %s\n\n", dbPath)
+}
+
+func warnIfOutdated(db *cvedb.CVEDB) {
+	meta, err := db.GetMetadata()
+	if err != nil {
+		return
+	}
+
+	age := time.Since(meta.LastModified)
+	if age > 7*24*time.Hour {
+		fmt.Printf("⚠️  Warning: CVE database is %d days old. Run 'dockerscan update-db' to update.\n\n",
+			int(age.Hours()/24))
+	}
+}
+
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return filepath.Join(home, path[1:])
+	}
+	return path
+}
+
+func printUsage() {
+	fmt.Println(`
+Usage: dockerscan [command] [options] <image>
+
+Commands:
+  scan        Scan a Docker image (default)
+  update-db   Download or update the CVE database
+  version     Show version information
+  help        Show this help message
+
+Before first scan, run: dockerscan update-db
+
+Examples:
+  dockerscan update-db
+  dockerscan nginx:latest
+  dockerscan --scanners cis,secrets alpine:3.18
+`)
 }
