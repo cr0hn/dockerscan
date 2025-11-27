@@ -582,7 +582,18 @@ func (s *RuntimeScanner) checkSensitiveMounts(container *docker.ContainerInfo) [
 	for _, mount := range container.Mounts {
 		// Check if source matches sensitive paths
 		for _, risk := range sensitivePaths {
-			if strings.HasPrefix(mount.Source, risk.Path) || mount.Destination == risk.Path {
+			// For root path "/" check, require exact match not prefix to avoid false positives
+			// (e.g., /var/lib/docker/volumes/abc/_data should not match "/" as a prefix)
+			var matched bool
+			if risk.Path == "/" {
+				// For root filesystem, require exact match
+				matched = mount.Source == "/" || mount.Destination == "/"
+			} else {
+				// For other paths, use prefix match for source or exact match for destination
+				matched = strings.HasPrefix(mount.Source, risk.Path) || mount.Destination == risk.Path
+			}
+
+			if matched {
 				finding := models.Finding{
 					ID:          fmt.Sprintf("RUNTIME-MOUNT-%s-%s", strings.ReplaceAll(risk.Path, "/", "-"), container.ID[:12]),
 					Title:       fmt.Sprintf("Container '%s' has sensitive mount: %s", container.Name, risk.Path),
