@@ -188,3 +188,179 @@ func TestImageInfo(t *testing.T) {
 		t.Errorf("Expected PATH env var, got %s", info.Environment["PATH"])
 	}
 }
+
+func TestExtractBaseImage(t *testing.T) {
+	tests := []struct {
+		name        string
+		instruction string
+		expected    string
+	}{
+		{
+			name:        "Simple FROM",
+			instruction: "FROM ubuntu:20.04",
+			expected:    "ubuntu:20.04",
+		},
+		{
+			name:        "FROM with platform flag",
+			instruction: "FROM --platform=linux/amd64 ubuntu:20.04",
+			expected:    "ubuntu:20.04",
+		},
+		{
+			name:        "FROM with AS alias",
+			instruction: "FROM ubuntu:20.04 AS builder",
+			expected:    "ubuntu:20.04",
+		},
+		{
+			name:        "FROM with platform and AS",
+			instruction: "FROM --platform=$TARGETPLATFORM golang:1.21 AS build",
+			expected:    "golang:1.21",
+		},
+		{
+			name:        "Lowercase from",
+			instruction: "from nginx:alpine",
+			expected:    "nginx:alpine",
+		},
+		{
+			name:        "FROM with multiple flags",
+			instruction: "FROM --platform=linux/arm64 --network=host alpine:3.18",
+			expected:    "alpine:3.18",
+		},
+		{
+			name:        "FROM with shell command prefix",
+			instruction: "/bin/sh -c #(nop) FROM ubuntu:20.04",
+			expected:    "ubuntu:20.04",
+		},
+		{
+			name:        "FROM with docker buildkit prefix",
+			instruction: "#(nop) FROM --platform=linux/amd64 node:18-alpine",
+			expected:    "node:18-alpine",
+		},
+		{
+			name:        "Empty string",
+			instruction: "",
+			expected:    "",
+		},
+		{
+			name:        "No FROM keyword",
+			instruction: "RUN apt-get update",
+			expected:    "",
+		},
+		{
+			name:        "FROM without image",
+			instruction: "FROM",
+			expected:    "",
+		},
+		{
+			name:        "FROM with only flags",
+			instruction: "FROM --platform=linux/amd64",
+			expected:    "",
+		},
+		{
+			name:        "Image with registry",
+			instruction: "FROM gcr.io/distroless/base:latest",
+			expected:    "gcr.io/distroless/base:latest",
+		},
+		{
+			name:        "Image with port in registry",
+			instruction: "FROM localhost:5000/myimage:v1.0",
+			expected:    "localhost:5000/myimage:v1.0",
+		},
+		{
+			name:        "Image with digest",
+			instruction: "FROM alpine@sha256:abc123def456",
+			expected:    "alpine@sha256:abc123def456",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ExtractBaseImage(tt.instruction)
+			if result != tt.expected {
+				t.Errorf("ExtractBaseImage(%q) = %q, expected %q", tt.instruction, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExtractLastBaseImage(t *testing.T) {
+	tests := []struct {
+		name     string
+		history  []string
+		expected string
+	}{
+		{
+			name: "Single stage build",
+			history: []string{
+				"RUN apt-get update",
+				"COPY . /app",
+				"FROM ubuntu:20.04",
+			},
+			expected: "ubuntu:20.04",
+		},
+		{
+			name: "Multi-stage build - last is runtime",
+			history: []string{
+				"COPY --from=builder /app/binary /app/binary",
+				"FROM alpine:3.18",
+				"RUN go build -o /app/binary",
+				"FROM golang:1.21 AS builder",
+			},
+			expected: "alpine:3.18",
+		},
+		{
+			name: "Multi-stage with platform flags",
+			history: []string{
+				"CMD [\"npm\", \"start\"]",
+				"FROM --platform=linux/amd64 node:18-alpine",
+				"RUN go build",
+				"FROM --platform=linux/amd64 golang:1.21 AS builder",
+			},
+			expected: "node:18-alpine",
+		},
+		{
+			name: "History with shell prefixes",
+			history: []string{
+				"/bin/sh -c npm install",
+				"/bin/sh -c #(nop) FROM node:18-alpine",
+				"/bin/sh -c go build",
+				"/bin/sh -c #(nop) FROM golang:1.21 AS builder",
+			},
+			expected: "node:18-alpine",
+		},
+		{
+			name:     "Empty history",
+			history:  []string{},
+			expected: "",
+		},
+		{
+			name: "No FROM statements",
+			history: []string{
+				"RUN apt-get update",
+				"COPY . /app",
+				"CMD [\"/app/start\"]",
+			},
+			expected: "",
+		},
+		{
+			name: "Three stage build",
+			history: []string{
+				"ENTRYPOINT [\"/app/server\"]",
+				"FROM alpine:3.18",
+				"COPY --from=builder /app/binary /app/binary",
+				"FROM ubuntu:20.04 AS builder",
+				"COPY --from=deps /app/node_modules /app/node_modules",
+				"FROM node:18 AS deps",
+			},
+			expected: "alpine:3.18",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ExtractLastBaseImage(tt.history)
+			if result != tt.expected {
+				t.Errorf("ExtractLastBaseImage() = %q, expected %q", result, tt.expected)
+			}
+		})
+	}
+}

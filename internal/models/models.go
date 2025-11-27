@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Severity levels for findings
 type Severity string
@@ -103,4 +106,84 @@ type ImageInfo struct {
 	Entrypoint    []string          `json:"entrypoint,omitempty"`
 	Cmd           []string          `json:"cmd,omitempty"`
 	Labels        map[string]string `json:"labels,omitempty"`
+}
+
+// DockerfileInstruction represents a parsed Dockerfile instruction
+type DockerfileInstruction struct {
+	Command string
+	Args    []string
+	Raw     string
+}
+
+// ExtractBaseImage extracts the base image from a Dockerfile FROM instruction.
+// It handles various FROM statement formats:
+// - FROM ubuntu:20.04
+// - FROM --platform=linux/amd64 ubuntu:20.04
+// - FROM ubuntu:20.04 AS builder
+// - FROM --platform=$TARGETPLATFORM golang:1.21 AS build
+//
+// Returns the image:tag portion, or empty string if not found.
+func ExtractBaseImage(instruction string) string {
+	if instruction == "" {
+		return ""
+	}
+
+	// Split into fields
+	fields := strings.Fields(instruction)
+	if len(fields) < 2 {
+		return ""
+	}
+
+	// Find FROM keyword (case-insensitive)
+	fromIndex := -1
+	for i, field := range fields {
+		if strings.EqualFold(field, "FROM") {
+			fromIndex = i
+			break
+		}
+	}
+
+	if fromIndex == -1 || fromIndex+1 >= len(fields) {
+		return ""
+	}
+
+	// Skip any flags after FROM (flags start with --)
+	imageIndex := fromIndex + 1
+	for imageIndex < len(fields) && strings.HasPrefix(fields[imageIndex], "--") {
+		imageIndex++
+	}
+
+	// Check we have an image name
+	if imageIndex >= len(fields) {
+		return ""
+	}
+
+	image := fields[imageIndex]
+
+	// Remove 'AS alias' suffix if present
+	// The image should not start with these keywords
+	if strings.EqualFold(image, "AS") {
+		return ""
+	}
+
+	return strings.TrimSpace(image)
+}
+
+// ExtractLastBaseImage finds the last FROM instruction in a list of history entries.
+// In multi-stage builds, the last FROM represents the final runtime image.
+// History is typically in reverse order (newest first), so we search from the end.
+func ExtractLastBaseImage(historyEntries []string) string {
+	var lastImage string
+
+	// Process history from oldest to newest to find the last FROM
+	for i := len(historyEntries) - 1; i >= 0; i-- {
+		entry := historyEntries[i]
+		if strings.Contains(strings.ToUpper(entry), "FROM") {
+			if img := ExtractBaseImage(entry); img != "" {
+				lastImage = img
+			}
+		}
+	}
+
+	return lastImage
 }

@@ -614,18 +614,15 @@ func (s *VulnerabilityScanner) buildVulnerabilityDatabase() map[string][]Vulnera
 
 // detectBaseImageFromHistory parses image history to find the FROM instruction
 func (s *VulnerabilityScanner) detectBaseImageFromHistory(history []docker.HistoryEntry) string {
-	// Look for the last FROM instruction in history
-	// History is in reverse order (newest first)
-	fromRegex := regexp.MustCompile(`(?i)FROM\s+([^\s]+)`)
-
-	for i := len(history) - 1; i >= 0; i-- {
-		entry := history[i]
-		if matches := fromRegex.FindStringSubmatch(entry.CreatedBy); len(matches) > 1 {
-			return strings.TrimSpace(matches[1])
-		}
+	// Convert history entries to strings for processing
+	historyStrings := make([]string, len(history))
+	for i, entry := range history {
+		historyStrings[i] = entry.CreatedBy
 	}
 
-	return ""
+	// Use the shared helper function to extract the last base image
+	// This handles multi-stage builds and platform flags correctly
+	return models.ExtractLastBaseImage(historyStrings)
 }
 
 // isVersionVulnerable checks if a version is vulnerable

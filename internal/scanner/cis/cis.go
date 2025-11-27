@@ -990,14 +990,7 @@ func (s *CISScanner) checkVolumes(info *docker.ImageInfo) []models.Finding {
 
 // Helper function to extract base image from history
 func extractBaseImage(createdBy string) string {
-	// Try to extract FROM instruction
-	if strings.Contains(strings.ToUpper(createdBy), "FROM") {
-		parts := strings.Fields(createdBy)
-		for i, part := range parts {
-			if strings.ToUpper(part) == "FROM" && i+1 < len(parts) {
-				return parts[i+1]
-			}
-		}
-	}
-	return ""
+	// Use the shared helper function from models package
+	// This handles platform flags, AS aliases, and other FROM variants
+	return models.ExtractBaseImage(createdBy)
 }
