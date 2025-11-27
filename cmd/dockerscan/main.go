@@ -246,64 +246,190 @@ func printFindingsTable(findings []models.Finding) {
 
 	fmt.Println()
 
-	// Calculate max title length for column width
-	maxTitleLen := 50
-	for _, finding := range findings {
-		if len(finding.Title) > maxTitleLen {
-			maxTitleLen = len(finding.Title)
-		}
-	}
-
-	// Cap the title length to keep table reasonable
-	if maxTitleLen > 80 {
-		maxTitleLen = 80
-	}
+	// Fixed column widths for a clean table
+	const (
+		numWidth      = 3
+		severityWidth = 10
+		idWidth       = 15
+		titleWidth    = 54 // Title/Description column width for ~120 char total table width
+	)
 
 	// Build format strings
-	headerFormat := fmt.Sprintf("   │ %%3s │ %%10s │ %%-%ds │ %%-%ds │\n", 15, maxTitleLen)
-	rowFormat := fmt.Sprintf("   │ %%3d │ %%10s │ %%-%ds │ %%-%ds │\n", 15, maxTitleLen)
+	headerFormat := fmt.Sprintf("   │ %%3s │ %%-%ds │ %%-%ds │ %%-%ds │\n", severityWidth, idWidth, titleWidth)
+	rowFormat := fmt.Sprintf("   │ %%3d │ %%-%ds │ %%-%ds │ %%-%ds │\n", severityWidth, idWidth, titleWidth)
+	contFormat := fmt.Sprintf("   │ %%3s │ %%-%ds │ %%-%ds │ %%-%ds │\n", severityWidth, idWidth, titleWidth)
 
 	// Table header
-	printFindingsTableBorder(maxTitleLen, "top")
+	printFindingsTableBorder(titleWidth, "top")
 	fmt.Printf(headerFormat, "#", "Severity", "ID", "Title")
-	printFindingsTableBorder(maxTitleLen, "middle")
+	printFindingsTableBorder(titleWidth, "middle")
 
 	// Findings rows
 	for i, finding := range findings {
 		severitySymbol := getSeveritySymbol(finding.Severity)
 		sevStr := fmt.Sprintf("%s %s", severitySymbol, finding.Severity)
 
-		// Truncate title if too long
-		title := finding.Title
-		if len(title) > maxTitleLen {
-			title = title[:maxTitleLen-3] + "..."
-		}
+		// Wrap title if too long
+		titleLines := wrapText(finding.Title, titleWidth)
 
 		// Truncate ID if too long
 		id := finding.ID
-		if len(id) > 15 {
-			id = id[:12] + "..."
+		if len(id) > idWidth {
+			id = id[:idWidth-3] + "..."
 		}
 
-		fmt.Printf(rowFormat, i+1, sevStr, id, title)
+		// Print first row with number, severity, ID, and first line of title
+		if len(titleLines) > 0 {
+			fmt.Printf(rowFormat, i+1, sevStr, id, titleLines[0])
 
-		// Print description and remediation below the table row
+			// Print remaining title lines (if any)
+			for j := 1; j < len(titleLines); j++ {
+				fmt.Printf(contFormat, "", "", "", titleLines[j])
+			}
+		} else {
+			fmt.Printf(rowFormat, i+1, sevStr, id, "")
+		}
+
+		// Print description with word wrap
 		if finding.Description != "" {
-			fmt.Printf("   │     │            │ Description: %s\n", finding.Description)
+			descLines := wrapText("Description: "+finding.Description, titleWidth)
+			for _, line := range descLines {
+				fmt.Printf(contFormat, "", "", "", line)
+			}
 		}
 
+		// Print remediation with word wrap
 		if finding.Remediation != "" {
-			fmt.Printf("   │     │            │ 💡 Remediation: %s\n", finding.Remediation)
+			remLines := wrapText("💡 Remediation: "+finding.Remediation, titleWidth)
+			for _, line := range remLines {
+				fmt.Printf(contFormat, "", "", "", line)
+			}
 		}
 
 		// Add separator between findings (except for last one)
 		if i < len(findings)-1 {
-			printFindingsTableBorder(maxTitleLen, "separator")
+			printFindingsTableBorder(titleWidth, "separator")
 		}
 	}
 
 	// Table footer
-	printFindingsTableBorder(maxTitleLen, "bottom")
+	printFindingsTableBorder(titleWidth, "bottom")
+}
+
+// wrapText splits text into lines that fit within maxWidth
+// It breaks on word boundaries when possible and handles emoji correctly
+func wrapText(text string, maxWidth int) []string {
+	if text == "" {
+		return []string{}
+	}
+
+	var lines []string
+	words := splitIntoWords(text)
+	currentLine := ""
+
+	for _, word := range words {
+		// Calculate visual width (emojis count as 2 chars)
+		testLine := currentLine
+		if currentLine != "" {
+			testLine += " "
+		}
+		testLine += word
+
+		visualWidth := calculateVisualWidth(testLine)
+
+		if visualWidth <= maxWidth {
+			// Word fits on current line
+			if currentLine != "" {
+				currentLine += " "
+			}
+			currentLine += word
+		} else {
+			// Word doesn't fit
+			if currentLine != "" {
+				// Save current line and start new one
+				lines = append(lines, padRight(currentLine, maxWidth))
+				currentLine = word
+			} else {
+				// Single word is too long, force break it
+				if len(word) > maxWidth {
+					lines = append(lines, padRight(word[:maxWidth], maxWidth))
+					currentLine = ""
+				} else {
+					currentLine = word
+				}
+			}
+		}
+	}
+
+	// Add remaining line
+	if currentLine != "" {
+		lines = append(lines, padRight(currentLine, maxWidth))
+	}
+
+	// If no lines were created, return empty line
+	if len(lines) == 0 {
+		lines = append(lines, padRight("", maxWidth))
+	}
+
+	return lines
+}
+
+// splitIntoWords splits text into words, preserving emojis
+func splitIntoWords(text string) []string {
+	var words []string
+	currentWord := ""
+
+	for _, r := range text {
+		if r == ' ' || r == '\t' || r == '\n' {
+			if currentWord != "" {
+				words = append(words, currentWord)
+				currentWord = ""
+			}
+		} else {
+			currentWord += string(r)
+		}
+	}
+
+	if currentWord != "" {
+		words = append(words, currentWord)
+	}
+
+	return words
+}
+
+// calculateVisualWidth returns the visual width of a string
+// Emojis and some Unicode characters take up 2 character widths
+func calculateVisualWidth(s string) int {
+	width := 0
+	for _, r := range s {
+		// Most emojis are in these ranges
+		if r >= 0x1F300 && r <= 0x1F9FF { // Emoji range
+			width += 2
+		} else if r >= 0x2600 && r <= 0x26FF { // Miscellaneous symbols
+			width += 2
+		} else if r >= 0x2700 && r <= 0x27BF { // Dingbats
+			width += 2
+		} else if r == 0x203C || r == 0x2049 { // Other emoji-like chars
+			width += 2
+		} else {
+			width += 1
+		}
+	}
+	return width
+}
+
+// padRight pads a string with spaces to reach the target width
+// Takes into account emoji visual width
+func padRight(s string, width int) string {
+	visualWidth := calculateVisualWidth(s)
+	if visualWidth >= width {
+		return s
+	}
+	padding := width - visualWidth
+	for i := 0; i < padding; i++ {
+		s += " "
+	}
+	return s
 }
 
 // printTableBorder prints a table border for category table
