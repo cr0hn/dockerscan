@@ -26,16 +26,29 @@ func main() {
 	ctx := context.Background()
 	cfg := config.NewDefaultConfig()
 
-	// Get image name from args (simplified for now)
+	// Get image name from args
+	// Support both: dockerscan <image> and dockerscan scan <image>
 	if len(os.Args) < 2 {
-		fmt.Println("\nUsage: dockerscan <image-name>")
+		fmt.Println("\nUsage: dockerscan [scan] <image-name>")
 		fmt.Println("\nExample:")
 		fmt.Println("  dockerscan nginx:latest")
+		fmt.Println("  dockerscan scan nginx:latest")
 		fmt.Println("  dockerscan --format sarif --output report.sarif ubuntu:22.04")
 		os.Exit(1)
 	}
 
-	imageName := os.Args[1]
+	var imageName string
+	if os.Args[1] == "scan" {
+		if len(os.Args) < 3 {
+			fmt.Println("\nUsage: dockerscan scan <image-name>")
+			fmt.Println("\nExample:")
+			fmt.Println("  dockerscan scan nginx:latest")
+			os.Exit(1)
+		}
+		imageName = os.Args[2]
+	} else {
+		imageName = os.Args[1]
+	}
 
 	// Create Docker client
 	dockerClient, err := docker.NewClient()
@@ -55,7 +68,27 @@ func main() {
 	registry.Register(vulnerabilities.NewVulnerabilityScanner(dockerClient))
 	registry.Register(runtime.NewRuntimeScanner(dockerClient))
 
-	fmt.Printf("\n🔍 Scanning image: %s\n\n", imageName)
+	fmt.Printf("\n🔍 Scanning image: %s\n", imageName)
+
+	// Check if image exists locally
+	exists, err := dockerClient.ImageExists(ctx, imageName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error checking image: %v\n", err)
+		os.Exit(1)
+	}
+
+	if !exists {
+		fmt.Printf("   Image not found locally. Pulling from registry...\n")
+		if err := dockerClient.PullImage(ctx, imageName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Image '%s' not found locally and could not be pulled from registry.\n", imageName)
+			fmt.Fprintf(os.Stderr, "       Please check the image name and try again.\n")
+			fmt.Fprintf(os.Stderr, "       Details: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("   Image pulled successfully.\n")
+	}
+
+	fmt.Println()
 
 	// Create scan target
 	target := models.ScanTarget{
