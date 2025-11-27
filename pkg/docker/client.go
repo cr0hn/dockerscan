@@ -245,7 +245,7 @@ func (c *Client) ScanImageFiles(ctx context.Context, imageName string, callback 
 	defer os.RemoveAll(tmpDir)
 
 	// Extract the image tar
-	if err := archive.Unpack(reader, tmpDir, nil); err != nil {
+	if err := archive.Unpack(reader, tmpDir, &archive.TarOptions{}); err != nil {
 		return fmt.Errorf("failed to extract image: %w", err)
 	}
 
