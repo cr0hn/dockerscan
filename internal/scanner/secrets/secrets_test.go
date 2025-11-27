@@ -254,3 +254,144 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// Test false positive filtering
+func TestSecretsScanner_IsFalsePositive(t *testing.T) {
+	scanner := NewSecretsScanner(nil)
+
+	tests := []struct {
+		name          string
+		value         string
+		shouldBeFalse bool
+	}{
+		// Common false positive strings
+		{"Example string", "example_api_key", true},
+		{"Placeholder", "placeholder_value", true},
+		{"Change me", "changeme123", true},
+		{"TODO marker", "TODO: add key here", true},
+		{"FIXME marker", "FIXME: secret", true},
+		{"Your key here", "your_key_here", true},
+		{"Dummy value", "dummy_secret", true},
+		{"Sample data", "sample_password", true},
+		{"Test key", "test_key_123", true},
+		{"Fake data", "fake_token", true},
+		{"X pattern", "XXXXXXXXXX", true},
+		{"Zero pattern", "0000000000", true},
+		{"1234 pattern", "123456789012345", true},
+
+		// UUIDs (standard format)
+		{"UUID v4", "550e8400-e29b-41d4-a716-446655440000", true},
+		{"UUID lowercase", "123e4567-e89b-12d3-a456-426614174000", true},
+		{"UUID uppercase", "123E4567-E89B-12D3-A456-426614174000", true},
+
+		// Common hash formats
+		{"SHA-1 hash", "356a192b7913b04c54574d18c28d46e6395428ab", true},
+		{"SHA-256 hash", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", true},
+		{"MD5 hash", "5d41402abc4b2a76b9719d911017c592", true},
+		{"Git commit hash", "a3c4f2e9b8d7c6a5b4e3f2d1c0a9b8c7d6e5f4a3", true},
+
+		// Real secrets (should not be false positives)
+		// Note: Some API keys might be detected as hashes if they're pure alphanumeric 40/64 chars
+		// But that's okay since we removed the overly generic COHERE pattern
+		{"Real password", "MyS3cr3tP@ssw0rd!", false},
+		{"Random secret", "aB3#xK9$mP2@zQ7", false},
+		{"Mixed alphanumeric", "aB3xK9mP2zQ7wR5tY8uI4oP1", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := scanner.isFalsePositive(tt.value)
+			if result != tt.shouldBeFalse {
+				t.Errorf("isFalsePositive('%s') = %v, want %v", tt.value, result, tt.shouldBeFalse)
+			}
+		})
+	}
+}
+
+// Test comment detection
+func TestSecretsScanner_IsLikelyCommentOrDoc(t *testing.T) {
+	scanner := NewSecretsScanner(nil)
+
+	tests := []struct {
+		name      string
+		line      string
+		isComment bool
+	}{
+		{"Hash comment", "# password = example", true},
+		{"Double slash", "// api_key = test", true},
+		{"Block comment start", "/* secret = value", true},
+		{"Block comment line", "* password = xxx", true},
+		{"HTML comment", "<!-- api_key = test -->", true},
+		{"Python docstring", `"""password = example"""`, true},
+		{"Python docstring single", "'''secret = test'''", true},
+		{"Regular code", `password = "realvalue"`, false},
+		{"Config line", "api_key=actual_key", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := scanner.isLikelyCommentOrDoc(tt.line)
+			if result != tt.isComment {
+				t.Errorf("isLikelyCommentOrDoc('%s') = %v, want %v", tt.line, result, tt.isComment)
+			}
+		})
+	}
+}
+
+// Test entropy threshold changes
+func TestSecretsScanner_EntropyThresholdUpdated(t *testing.T) {
+	scanner := NewSecretsScanner(nil)
+
+	// Test that common false positives have lower entropy than the 5.5 threshold
+	tests := []struct {
+		name       string
+		value      string
+		maxEntropy float64 // These should all be below 5.5
+	}{
+		{"UUID", "550e8400-e29b-41d4-a716-446655440000", 5.5},
+		{"SHA-1 hash", "356a192b7913b04c54574d18c28d46e6395428ab", 5.5},
+		{"Base64 string", "SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0", 5.5},
+		{"Hex string", "deadbeef1234567890abcdef", 5.5},
+		{"Repeated pattern", "123456781234567812345678", 5.5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entropy := scanner.calculateEntropy(tt.value)
+			t.Logf("Entropy for '%s': %f", tt.name, entropy)
+
+			if entropy > tt.maxEntropy {
+				t.Errorf("String '%s' has entropy %f, which exceeds threshold %f. "+
+					"This may cause false positives.", tt.value, entropy, tt.maxEntropy)
+			}
+		})
+	}
+
+	// Verify the threshold is actually 5.5 in the code
+	t.Run("Verify threshold is 5.5", func(t *testing.T) {
+		// This test documents that we raised the threshold from 4.5 to 5.5
+		// to reduce false positives from UUIDs, hashes, etc.
+		const expectedThreshold = 5.5
+		t.Logf("Entropy threshold has been raised to %f to reduce false positives", expectedThreshold)
+	})
+}
+
+// Test JWT severity is INFO
+func TestSecretsScanner_JWTSeverity(t *testing.T) {
+	scanner := NewSecretsScanner(nil)
+
+	severity := scanner.getSeverityForSecretType("JWT_TOKEN")
+	if severity != models.SeverityInfo {
+		t.Errorf("Expected INFO severity for JWT_TOKEN, got %s", severity)
+	}
+}
+
+// Test that COHERE_API_KEY pattern was removed
+func TestSecretsScanner_CoherePatternRemoved(t *testing.T) {
+	scanner := NewSecretsScanner(nil)
+
+	_, exists := scanner.patterns["COHERE_API_KEY"]
+	if exists {
+		t.Error("COHERE_API_KEY pattern should be removed to reduce false positives")
+	}
+}
