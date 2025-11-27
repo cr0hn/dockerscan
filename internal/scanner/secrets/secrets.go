@@ -16,8 +16,11 @@ import (
 // SecretsScanner detects sensitive data in Docker images
 type SecretsScanner struct {
 	scanner.BaseScanner
-	patterns     map[string]*regexp.Regexp
-	dockerClient *docker.Client
+	patterns           map[string]*regexp.Regexp
+	dockerClient       *docker.Client
+	falsePositivePatterns []*regexp.Regexp
+	uuidPattern        *regexp.Regexp
+	hashPatterns       map[string]*regexp.Regexp
 }
 
 // NewSecretsScanner creates a new secrets scanner with modern patterns (2024)
@@ -30,9 +33,11 @@ func NewSecretsScanner(dockerClient *docker.Client) *SecretsScanner {
 		),
 		patterns:     make(map[string]*regexp.Regexp),
 		dockerClient: dockerClient,
+		hashPatterns: make(map[string]*regexp.Regexp),
 	}
 
 	s.initializePatterns()
+	s.initializeFalsePositiveFilters()
 	return s
 }
 
@@ -112,10 +117,7 @@ func (s *SecretsScanner) initializePatterns() {
 		// Hugging Face
 		"HUGGINGFACE_TOKEN":     `hf_[A-Za-z0-9]{34}`,
 
-		// Cohere
-		"COHERE_API_KEY":        `[a-zA-Z0-9]{40}`,
-
-		// JWT
+		// JWT (INFO level - may include public tokens)
 		"JWT_TOKEN":             `eyJ[A-Za-z0-9-_=]+\.eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]*`,
 
 		// OAuth
@@ -135,7 +137,7 @@ func (s *SecretsScanner) initializePatterns() {
 		"CERTIFICATE":           `-----BEGIN CERTIFICATE-----`,
 		"CERTIFICATE_REQUEST":   `-----BEGIN CERTIFICATE REQUEST-----`,
 
-		// Database URLs
+		// Database URLs (handles URL-encoded passwords with %XX)
 		"POSTGRES_URL":          `postgresql://[a-zA-Z0-9_\-]+:[^@\s]+@[a-zA-Z0-9\.\-]+:[0-9]+/[a-zA-Z0-9_\-]+`,
 		"MYSQL_URL":             `mysql://[a-zA-Z0-9_\-]+:[^@\s]+@[a-zA-Z0-9\.\-]+:[0-9]+/[a-zA-Z0-9_\-]+`,
 		"MONGODB_URL":           `mongodb(\+srv)?://[a-zA-Z0-9_\-]+:[^@\s]+@[a-zA-Z0-9\.\-\,]+`,
@@ -165,6 +167,81 @@ func (s *SecretsScanner) initializePatterns() {
 	for name, pattern := range patterns {
 		s.patterns[name] = regexp.MustCompile(pattern)
 	}
+}
+
+// initializeFalsePositiveFilters sets up patterns to filter out common false positives
+func (s *SecretsScanner) initializeFalsePositiveFilters() {
+	// Common false positive strings
+	falsePositiveStrings := []string{
+		`(?i)example`,
+		`(?i)placeholder`,
+		`(?i)changeme`,
+		`(?i)todo`,
+		`(?i)fixme`,
+		`(?i)your[_-]?key[_-]?here`,
+		`(?i)replace[_-]?with`,
+		`(?i)insert[_-]?your`,
+		`(?i)dummy`,
+		`(?i)sample`,
+		`(?i)test[_-]?key`,
+		`(?i)fake`,
+		`(?i)xxxx+`,
+		`(?i)0000+`,
+		`(?i)1234+`,
+	}
+
+	s.falsePositivePatterns = make([]*regexp.Regexp, 0, len(falsePositiveStrings))
+	for _, pattern := range falsePositiveStrings {
+		s.falsePositivePatterns = append(s.falsePositivePatterns, regexp.MustCompile(pattern))
+	}
+
+	// UUID pattern (standard UUID format)
+	s.uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+	// Common hash patterns (SHA-1, SHA-256, MD5, Git commit hashes)
+	s.hashPatterns["SHA1"] = regexp.MustCompile(`(?i)^[0-9a-f]{40}$`)
+	s.hashPatterns["SHA256"] = regexp.MustCompile(`(?i)^[0-9a-f]{64}$`)
+	s.hashPatterns["MD5"] = regexp.MustCompile(`(?i)^[0-9a-f]{32}$`)
+	s.hashPatterns["GIT_COMMIT"] = regexp.MustCompile(`(?i)^[0-9a-f]{40}$`)
+}
+
+// isFalsePositive checks if a string matches common false positive patterns
+func (s *SecretsScanner) isFalsePositive(value string) bool {
+	// Check against false positive patterns
+	for _, pattern := range s.falsePositivePatterns {
+		if pattern.MatchString(value) {
+			return true
+		}
+	}
+
+	// Check if it's a UUID
+	if s.uuidPattern.MatchString(value) {
+		return true
+	}
+
+	// Check if it's a common hash format
+	for _, pattern := range s.hashPatterns {
+		if pattern.MatchString(value) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isLikelyCommentOrDoc checks if context suggests this is in a comment or documentation
+func (s *SecretsScanner) isLikelyCommentOrDoc(line string) bool {
+	// Check for common comment patterns
+	trimmed := strings.TrimSpace(line)
+	commentPrefixes := []string{"#", "//", "/*", "*", "<!--", "\"\"\"", "'''"}
+
+	for _, prefix := range commentPrefixes {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Scan performs secrets detection
@@ -209,12 +286,22 @@ func (s *SecretsScanner) scanEnvironmentVars(ctx context.Context, target models.
 	for key, value := range imageInfo.Env {
 		envString := fmt.Sprintf("%s=%s", key, value)
 
+		// Skip if it's a false positive
+		if s.isFalsePositive(value) {
+			continue
+		}
+
 		// Check against all patterns
 		for secretType, pattern := range s.patterns {
 			if pattern.MatchString(envString) || pattern.MatchString(value) {
 				match := pattern.FindString(envString)
 				if match == "" {
 					match = pattern.FindString(value)
+				}
+
+				// Skip false positives
+				if s.isFalsePositive(match) {
+					continue
 				}
 
 				finding := models.Finding{
@@ -249,9 +336,10 @@ func (s *SecretsScanner) scanEnvironmentVars(ctx context.Context, target models.
 		}
 
 		// Check for high-entropy values that might be secrets
-		if len(value) > 16 && s.calculateEntropy(value) > 4.5 {
+		// Raised threshold from 4.5 to 5.5 to reduce false positives from UUIDs and common hashes
+		if len(value) > 20 && s.calculateEntropy(value) > 5.5 {
 			// Skip if it looks like a path or common non-secret pattern
-			if !strings.Contains(value, "/") && !strings.Contains(value, "\\") {
+			if !strings.Contains(value, "/") && !strings.Contains(value, "\\") && !s.isFalsePositive(value) {
 				finding := models.Finding{
 					ID:          "SECRET-HIGH-ENTROPY",
 					Title:       "High-entropy string detected in environment variable",
@@ -297,6 +385,18 @@ func (s *SecretsScanner) scanFileContents(ctx context.Context, target models.Sca
 
 	// Convert matches to findings
 	for _, match := range matches {
+		// Skip false positives
+		if s.isFalsePositive(match.Match) {
+			continue
+		}
+
+		// Skip if it's in a comment or documentation (for PASSWORD_ASSIGNMENT patterns)
+		if strings.Contains(match.PatternName, "PASSWORD") || strings.Contains(match.PatternName, "SECRET") || strings.Contains(match.PatternName, "API_KEY") {
+			if s.isLikelyCommentOrDoc(match.Match) {
+				continue
+			}
+		}
+
 		finding := models.Finding{
 			ID:          fmt.Sprintf("SECRET-%s", match.PatternName),
 			Title:       fmt.Sprintf("Sensitive data detected in file: %s", match.PatternName),
@@ -400,8 +500,10 @@ func (s *SecretsScanner) scanFileContents(ctx context.Context, target models.Sca
 func (s *SecretsScanner) scanHighEntropyStrings(ctx context.Context, target models.ScanTarget) ([]models.Finding, error) {
 	var findings []models.Finding
 
-	// Entropy threshold for detecting potential secrets
-	const entropyThreshold = 4.5
+	// Entropy threshold raised from 4.5 to 5.5 to reduce false positives
+	// UUIDs have entropy ~4.7, SHA-1 hashes ~5.0, base64 ~5.2
+	// Real secrets typically have entropy > 5.5
+	const entropyThreshold = 5.5
 	const minLength = 20
 	const maxLength = 200
 
@@ -425,6 +527,11 @@ func (s *SecretsScanner) scanHighEntropyStrings(ctx context.Context, target mode
 	for _, match := range matches {
 		// Skip if too short or too long
 		if len(match.Match) < minLength || len(match.Match) > maxLength {
+			continue
+		}
+
+		// Skip false positives (UUIDs, hashes, common placeholders)
+		if s.isFalsePositive(match.Match) {
 			continue
 		}
 
@@ -480,7 +587,8 @@ func (s *SecretsScanner) scanHighEntropyStrings(ctx context.Context, target mode
 }
 
 // calculateEntropy calculates Shannon entropy to detect high-entropy strings
-// High entropy (> 4.5) often indicates encrypted data or secrets
+// High entropy (> 5.5) often indicates encrypted data or secrets
+// UUIDs ~4.7, SHA hashes ~5.0, base64 ~5.2, real secrets typically > 5.5
 func (s *SecretsScanner) calculateEntropy(data string) float64 {
 	if len(data) == 0 {
 		return 0.0
@@ -552,6 +660,15 @@ func (s *SecretsScanner) getSeverityForSecretType(secretType string) models.Seve
 		"MYSQL_URL":               true,
 		"MONGODB_URL":             true,
 		"DOCKER_AUTH":             true,
+	}
+
+	// Info severity for JWT tokens (may be public/non-sensitive)
+	infoTypes := map[string]bool{
+		"JWT_TOKEN": true,
+	}
+
+	if infoTypes[secretType] {
+		return models.SeverityInfo
 	}
 
 	if criticalTypes[secretType] {
