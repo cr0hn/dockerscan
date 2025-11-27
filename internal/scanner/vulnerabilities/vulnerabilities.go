@@ -629,9 +629,13 @@ func (s *VulnerabilityScanner) detectBaseImageFromHistory(history []docker.Histo
 }
 
 // isVersionVulnerable checks if a version is vulnerable
+// A package is vulnerable if it's within the affected version range AND below the fixed version
 func (s *VulnerabilityScanner) isVersionVulnerable(installedVersion, affectedVersions, fixedVersion string) bool {
+	inAffectedRange := false
+	belowFixedVersion := false
+
 	// Parse version ranges (e.g., "1.0.1-1.0.1f" or "2.0-2.14.1")
-	if strings.Contains(affectedVersions, "-") {
+	if affectedVersions != "" && strings.Contains(affectedVersions, "-") {
 		parts := strings.Split(affectedVersions, "-")
 		if len(parts) == 2 {
 			minVersion := strings.TrimSpace(parts[0])
@@ -640,19 +644,31 @@ func (s *VulnerabilityScanner) isVersionVulnerable(installedVersion, affectedVer
 			// Check if installed version is within vulnerable range
 			if s.compareVersion(installedVersion, minVersion) >= 0 &&
 				s.compareVersion(installedVersion, maxVersion) <= 0 {
-				return true
+				inAffectedRange = true
 			}
 		}
+	} else if affectedVersions != "" {
+		// If no range specified, treat as minimum version
+		if s.compareVersion(installedVersion, affectedVersions) >= 0 {
+			inAffectedRange = true
+		}
+	} else {
+		// No affected versions specified, assume all versions before fix are affected
+		inAffectedRange = true
 	}
 
 	// Check if version is less than fixed version
 	if fixedVersion != "" {
 		if s.compareVersion(installedVersion, fixedVersion) < 0 {
-			return true
+			belowFixedVersion = true
 		}
+	} else {
+		// No fixed version specified, so can't determine if fixed
+		belowFixedVersion = true
 	}
 
-	return false
+	// Vulnerable if in affected range AND below fixed version
+	return inAffectedRange && belowFixedVersion
 }
 
 // isBaseImageVulnerable checks if a base image version is vulnerable
@@ -709,8 +725,8 @@ func (s *VulnerabilityScanner) compareVersion(v1, v2 string) int {
 		}
 
 		// Extract numeric part
-		n1 := s.extractNumber(p1)
-		n2 := s.extractNumber(p2)
+		n1, hasNum1 := s.extractNumber(p1)
+		n2, hasNum2 := s.extractNumber(p2)
 
 		if n1 < n2 {
 			return -1
@@ -719,15 +735,16 @@ func (s *VulnerabilityScanner) compareVersion(v1, v2 string) int {
 			return 1
 		}
 
-		// If numbers are equal, compare suffix
+		// If numbers are equal, compare suffix using semantic versioning rules
 		s1 := s.extractSuffix(p1)
 		s2 := s.extractSuffix(p2)
 
 		if s1 != s2 {
-			if s1 < s2 {
-				return -1
+			// Apply semantic version suffix ordering
+			cmp := s.compareSuffix(s1, s2, hasNum1, hasNum2)
+			if cmp != 0 {
+				return cmp
 			}
-			return 1
 		}
 	}
 
@@ -740,16 +757,24 @@ func (s *VulnerabilityScanner) cleanVersion(version string) string {
 	version = strings.TrimPrefix(version, "v")
 	version = strings.TrimPrefix(version, "V")
 
-	// Remove Debian/Ubuntu epoch (e.g., "1:1.2.3-4" -> "1.2.3-4")
-	if idx := strings.Index(version, ":"); idx > 0 && idx < 3 {
-		version = version[idx+1:]
+	// Remove Debian/Ubuntu epoch (e.g., "1:1.2.3-4" or "100:1.2.3-4" -> "1.2.3-4")
+	// Epochs can be any number of digits, so we check if the part before ":" is all digits
+	if idx := strings.Index(version, ":"); idx > 0 {
+		epochPart := version[:idx]
+		if _, err := strconv.Atoi(epochPart); err == nil {
+			version = version[idx+1:]
+		}
 	}
 
-	// Remove Debian revision (e.g., "1.2.3-4" -> "1.2.3")
+	// Remove Debian/Ubuntu revision (e.g., "1.2.3-4" or "1.2.3-4ubuntu1" -> "1.2.3")
 	if idx := strings.LastIndex(version, "-"); idx > 0 {
-		// Check if it's a Debian revision (numeric after dash)
+		// Check if it's a Debian/Ubuntu revision
 		suffix := version[idx+1:]
+		// Pure numeric (Debian) or starts with numeric (Ubuntu)
 		if _, err := strconv.Atoi(suffix); err == nil {
+			version = version[:idx]
+		} else if len(suffix) > 0 && suffix[0] >= '0' && suffix[0] <= '9' {
+			// Ubuntu-style revision (e.g., "4ubuntu1")
 			version = version[:idx]
 		}
 	}
@@ -758,20 +783,112 @@ func (s *VulnerabilityScanner) cleanVersion(version string) string {
 }
 
 // extractNumber extracts the numeric part from a version component
-func (s *VulnerabilityScanner) extractNumber(part string) int {
+// Returns the number and a boolean indicating if a number was found
+func (s *VulnerabilityScanner) extractNumber(part string) (int, bool) {
 	numRegex := regexp.MustCompile(`^\d+`)
 	numStr := numRegex.FindString(part)
 	if numStr == "" {
-		return 0
+		return 0, false
 	}
-	num, _ := strconv.Atoi(numStr)
-	return num
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		return 0, false
+	}
+	return num, true
 }
 
 // extractSuffix extracts the non-numeric suffix from a version component
 func (s *VulnerabilityScanner) extractSuffix(part string) string {
 	numRegex := regexp.MustCompile(`^\d+`)
 	return numRegex.ReplaceAllString(part, "")
+}
+
+// compareSuffix compares version suffixes using semantic versioning rules
+// Pre-release versions (alpha, beta, rc) are considered LESS than final releases
+// Returns: -1 if s1 < s2, 0 if s1 == s2, 1 if s1 > s2
+func (s *VulnerabilityScanner) compareSuffix(s1, s2 string, hasNum1, hasNum2 bool) int {
+	// Normalize suffixes to lowercase for comparison
+	s1 = strings.ToLower(s1)
+	s2 = strings.ToLower(s2)
+
+	// Define pre-release suffix order (lower index = earlier/lesser version)
+	preReleaseSuffixes := []string{"alpha", "a", "beta", "b", "rc", "pre", "preview"}
+
+	// Helper to get pre-release priority (returns -1 if not a pre-release)
+	getPriority := func(suffix string) int {
+		for i, pre := range preReleaseSuffixes {
+			if strings.HasPrefix(suffix, pre) {
+				return i
+			}
+		}
+		return -1
+	}
+
+	priority1 := getPriority(s1)
+	priority2 := getPriority(s2)
+
+	// Case 1: Both are pre-release suffixes
+	if priority1 >= 0 && priority2 >= 0 {
+		if priority1 < priority2 {
+			return -1
+		}
+		if priority1 > priority2 {
+			return 1
+		}
+		// Same type of pre-release, compare lexicographically
+		if s1 < s2 {
+			return -1
+		}
+		if s1 > s2 {
+			return 1
+		}
+		return 0
+	}
+
+	// Case 2: Only s1 is a pre-release (s1 < s2)
+	if priority1 >= 0 && priority2 < 0 {
+		// s1 is pre-release, s2 is either final or post-release
+		if s2 == "" {
+			// s2 is final release (no suffix), s1 is pre-release
+			return -1
+		}
+		// s2 has a suffix but not pre-release (e.g., "post", "patch", etc.)
+		// Pre-release comes before final, which comes before post-release
+		return -1
+	}
+
+	// Case 3: Only s2 is a pre-release (s1 > s2)
+	if priority1 < 0 && priority2 >= 0 {
+		// s2 is pre-release, s1 is either final or post-release
+		if s1 == "" {
+			// s1 is final release (no suffix), s2 is pre-release
+			return 1
+		}
+		// s1 has a suffix but not pre-release
+		return 1
+	}
+
+	// Case 4: Neither is a pre-release suffix
+	// Check for empty suffix (final release)
+	if s1 == "" && s2 != "" {
+		// s1 is final, s2 has some suffix (post-release)
+		// Final comes before post-release
+		return -1
+	}
+	if s1 != "" && s2 == "" {
+		// s2 is final, s1 has some suffix (post-release)
+		return 1
+	}
+
+	// Both are either final (both empty) or both post-release
+	// Use lexicographic comparison
+	if s1 < s2 {
+		return -1
+	}
+	if s1 > s2 {
+		return 1
+	}
+	return 0
 }
 
 // VulnerabilityInfo represents a vulnerability entry
