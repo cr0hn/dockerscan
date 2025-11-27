@@ -17,6 +17,10 @@ const (
 
 	// Repository is the project repository
 	Repository = "https://github.com/cr0hn/dockerscan"
+
+	// CVE Database URLs
+	DefaultCVEDBURL       = "https://raw.githubusercontent.com/cr0hn/dockerscan/master/data/latest.db.gz"
+	DefaultCVEChecksumURL = "https://raw.githubusercontent.com/cr0hn/dockerscan/master/data/latest.db.gz.sha256"
 )
 
 // Config holds application configuration

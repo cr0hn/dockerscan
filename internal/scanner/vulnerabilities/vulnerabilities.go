@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cr0hn/dockerscan/v2/internal/cvedb"
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner"
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
@@ -16,17 +17,19 @@ import (
 type VulnerabilityScanner struct {
 	scanner.BaseScanner
 	dockerClient *docker.Client
+	cveDB        *cvedb.CVEDB // External CVE database
 }
 
 // NewVulnerabilityScanner creates a new vulnerability scanner
-func NewVulnerabilityScanner(dockerClient *docker.Client) *VulnerabilityScanner {
+func NewVulnerabilityScanner(dockerClient *docker.Client, db *cvedb.CVEDB) *VulnerabilityScanner {
 	return &VulnerabilityScanner{
 		BaseScanner: scanner.NewBaseScanner(
 			"vulnerabilities",
-			"CVE detection and vulnerability scanning (2024 critical CVEs)",
+			"CVE detection using external vulnerability database",
 			true,
 		),
 		dockerClient: dockerClient,
+		cveDB:        db,
 	}
 }
 
@@ -59,7 +62,7 @@ func (s *VulnerabilityScanner) Scan(ctx context.Context, target models.ScanTarge
 
 	// Check for vulnerable packages with actual version comparison
 	if len(packages) > 0 {
-		findings = append(findings, s.checkVulnerablePackages(packages)...)
+		findings = append(findings, s.checkVulnerablePackages(ctx, packages)...)
 	}
 
 	// Check base image from history
@@ -75,43 +78,54 @@ func (s *VulnerabilityScanner) Scan(ctx context.Context, target models.ScanTarge
 }
 
 // checkVulnerablePackages checks installed packages against vulnerability database
-func (s *VulnerabilityScanner) checkVulnerablePackages(packages []docker.PackageInfo) []models.Finding {
+func (s *VulnerabilityScanner) checkVulnerablePackages(ctx context.Context, packages []docker.PackageInfo) []models.Finding {
 	var findings []models.Finding
 
-	// Create a map for quick package lookup
-	packageMap := make(map[string]docker.PackageInfo)
-	for _, pkg := range packages {
-		packageMap[pkg.Name] = pkg
+	// Skip if no database
+	if s.cveDB == nil {
+		return findings
 	}
 
-	// Vulnerability database with package name -> CVE details
-	vulnDB := s.buildVulnerabilityDatabase()
+	// Convert to cvedb.PackageInfo
+	pkgInfos := make([]cvedb.PackageInfo, len(packages))
+	for i, p := range packages {
+		pkgInfos[i] = cvedb.PackageInfo{
+			Name:    p.Name,
+			Version: p.Version,
+			Source:  p.Source,
+		}
+	}
 
-	// Check each installed package against vulnerability database
+	// Query database
+	cvesByPkg, err := s.cveDB.QueryByPackages(pkgInfos)
+	if err != nil {
+		return findings
+	}
+
+	// Check each package
 	for _, pkg := range packages {
-		if vulns, exists := vulnDB[pkg.Name]; exists {
-			for _, vuln := range vulns {
-				if s.isVersionVulnerable(pkg.Version, vuln.AffectedVersions, vuln.FixedVersion) {
-					finding := models.Finding{
-						ID:          fmt.Sprintf("%s-%s", vuln.CVEID, pkg.Name),
-						Title:       fmt.Sprintf("%s in %s %s", vuln.CVEID, pkg.Name, pkg.Version),
-						Description: fmt.Sprintf("%s\n\nInstalled version: %s\nFixed in version: %s\nPackage source: %s", vuln.Description, pkg.Version, vuln.FixedVersion, pkg.Source),
-						Severity:    vuln.Severity,
-						Category:    "Vulnerability",
-						Source:      "vulnerabilities",
-						Remediation: fmt.Sprintf("Update %s to version %s or later. Rebuild the image with: apt-get update && apt-get upgrade %s (for dpkg) or apk upgrade %s (for Alpine)", pkg.Name, vuln.FixedVersion, pkg.Name, pkg.Name),
-						References:  vuln.References,
-						Metadata: map[string]interface{}{
-							"cve_id":          vuln.CVEID,
-							"package_name":    pkg.Name,
-							"package_version": pkg.Version,
-							"package_source":  pkg.Source,
-							"fixed_version":   vuln.FixedVersion,
-							"cvss_score":      vuln.CVSSScore,
-						},
-					}
-					findings = append(findings, finding)
+		cves := cvesByPkg[pkg.Name]
+		for _, cve := range cves {
+			// Use existing version comparison logic
+			if s.isVersionVulnerable(pkg.Version, cve.VersionStart+"-"+cve.VersionEnd, cve.FixedVersion) {
+				finding := models.Finding{
+					ID:          cve.CVEID + "-" + pkg.Name,
+					Title:       fmt.Sprintf("%s in %s %s", cve.CVEID, pkg.Name, pkg.Version),
+					Description: cve.Description,
+					Severity:    models.Severity(cve.Severity),
+					Category:    "Vulnerabilities",
+					Source:      s.Name(),
+					Remediation: fmt.Sprintf("Upgrade %s to version %s or later", pkg.Name, cve.FixedVersion),
+					References:  cve.References,
+					Metadata: map[string]interface{}{
+						"cve_id":          cve.CVEID,
+						"package_name":    pkg.Name,
+						"package_version": pkg.Version,
+						"fixed_version":   cve.FixedVersion,
+						"cvss_score":      cve.CVSSScore,
+					},
 				}
+				findings = append(findings, finding)
 			}
 		}
 	}
@@ -448,168 +462,6 @@ func (s *VulnerabilityScanner) check2024CVEs(packages []docker.PackageInfo, imag
 	// separately through Docker daemon version detection.
 
 	return findings
-}
-
-// buildVulnerabilityDatabase creates a database of known vulnerabilities
-func (s *VulnerabilityScanner) buildVulnerabilityDatabase() map[string][]VulnerabilityInfo {
-	return map[string][]VulnerabilityInfo{
-		"openssl": {
-			{
-				CVEID:            "CVE-2014-0160",
-				Description:      "Heartbleed vulnerability allows remote attackers to read sensitive memory contents",
-				AffectedVersions: "1.0.1-1.0.1f",
-				FixedVersion:     "1.0.1g",
-				Severity:         models.SeverityCritical,
-				CVSSScore:        7.5,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2014-0160",
-					"https://heartbleed.com/",
-				},
-			},
-			{
-				CVEID:            "CVE-2016-2107",
-				Description:      "Padding oracle vulnerability in AES-NI CBC MAC check",
-				AffectedVersions: "1.0.2-1.0.2g",
-				FixedVersion:     "1.0.2h",
-				Severity:         models.SeverityHigh,
-				CVSSScore:        5.9,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2016-2107",
-				},
-			},
-		},
-		"libssl1.0.0": {
-			{
-				CVEID:            "CVE-2014-0160",
-				Description:      "Heartbleed vulnerability allows remote attackers to read sensitive memory contents",
-				AffectedVersions: "1.0.1-1.0.1f",
-				FixedVersion:     "1.0.1g",
-				Severity:         models.SeverityCritical,
-				CVSSScore:        7.5,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2014-0160",
-				},
-			},
-		},
-		"bash": {
-			{
-				CVEID:            "CVE-2014-6271",
-				Description:      "Shellshock vulnerability allows arbitrary code execution through environment variables",
-				AffectedVersions: "3.0-4.3",
-				FixedVersion:     "4.3-25",
-				Severity:         models.SeverityCritical,
-				CVSSScore:        10.0,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2014-6271",
-					"https://en.wikipedia.org/wiki/Shellshock_(software_bug)",
-				},
-			},
-		},
-		"glibc": {
-			{
-				CVEID:            "CVE-2015-7547",
-				Description:      "Stack-based buffer overflow in glibc DNS resolver",
-				AffectedVersions: "2.9-2.22",
-				FixedVersion:     "2.23",
-				Severity:         models.SeverityCritical,
-				CVSSScore:        8.1,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2015-7547",
-				},
-			},
-		},
-		"libc6": {
-			{
-				CVEID:            "CVE-2015-7547",
-				Description:      "Stack-based buffer overflow in glibc DNS resolver",
-				AffectedVersions: "2.9-2.22",
-				FixedVersion:     "2.23",
-				Severity:         models.SeverityCritical,
-				CVSSScore:        8.1,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2015-7547",
-				},
-			},
-		},
-		"libcurl3": {
-			{
-				CVEID:            "CVE-2023-38545",
-				Description:      "SOCKS5 heap buffer overflow vulnerability",
-				AffectedVersions: "7.69.0-8.3.0",
-				FixedVersion:     "8.4.0",
-				Severity:         models.SeverityHigh,
-				CVSSScore:        7.5,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2023-38545",
-				},
-			},
-		},
-		"curl": {
-			{
-				CVEID:            "CVE-2023-38545",
-				Description:      "SOCKS5 heap buffer overflow vulnerability",
-				AffectedVersions: "7.69.0-8.3.0",
-				FixedVersion:     "8.4.0",
-				Severity:         models.SeverityHigh,
-				CVSSScore:        7.5,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2023-38545",
-				},
-			},
-		},
-		"git": {
-			{
-				CVEID:            "CVE-2022-39253",
-				Description:      "Git credential helper can expose credentials to malicious repository",
-				AffectedVersions: "2.0.0-2.37.3",
-				FixedVersion:     "2.37.4",
-				Severity:         models.SeverityHigh,
-				CVSSScore:        7.5,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2022-39253",
-				},
-			},
-		},
-		"sudo": {
-			{
-				CVEID:            "CVE-2021-3156",
-				Description:      "Baron Samedit - Heap buffer overflow allowing privilege escalation",
-				AffectedVersions: "1.8.2-1.9.5p1",
-				FixedVersion:     "1.9.5p2",
-				Severity:         models.SeverityCritical,
-				CVSSScore:        7.8,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2021-3156",
-				},
-			},
-		},
-		"openssh": {
-			{
-				CVEID:            "CVE-2024-6387",
-				Description:      "RegreSSHion - Race condition in OpenSSH's server (sshd) allows unauthenticated RCE",
-				AffectedVersions: "8.5p1-9.7p1",
-				FixedVersion:     "9.8p1",
-				Severity:         models.SeverityCritical,
-				CVSSScore:        8.1,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2024-6387",
-				},
-			},
-		},
-		"openssh-server": {
-			{
-				CVEID:            "CVE-2024-6387",
-				Description:      "RegreSSHion - Race condition in OpenSSH's server (sshd) allows unauthenticated RCE",
-				AffectedVersions: "8.5p1-9.7p1",
-				FixedVersion:     "9.8p1",
-				Severity:         models.SeverityCritical,
-				CVSSScore:        8.1,
-				References: []string{
-					"https://nvd.nist.gov/vuln/detail/CVE-2024-6387",
-				},
-			},
-		},
-	}
 }
 
 // detectBaseImageFromHistory parses image history to find the FROM instruction
