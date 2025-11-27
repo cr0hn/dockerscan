@@ -324,7 +324,7 @@ func (s *SupplyChainScanner) verifyImageSignature(ctx context.Context, target mo
 	var findings []models.Finding
 
 	// Verify image signature using Docker client
-	isSigned, digest, err := s.dockerClient.VerifyImageSignature(ctx, target.ImageName)
+	isSigned, _, err := s.dockerClient.VerifyImageSignature(ctx, target.ImageName)
 	if err != nil {
 		// Error checking signature - report as unsigned
 		finding := models.Finding{
@@ -365,22 +365,8 @@ func (s *SupplyChainScanner) verifyImageSignature(ctx context.Context, target mo
 			},
 		}
 		findings = append(findings, finding)
-	} else {
-		// Image is signed - good! But report as info
-		finding := models.Finding{
-			ID:          "SUPPLY-CHAIN-010",
-			Title:       "Image signature verified",
-			Description: fmt.Sprintf("Image has a valid content digest: %s. This provides supply chain integrity verification.", digest),
-			Severity:    models.SeverityInfo,
-			Category:    "Supply-Chain",
-			Source:      "supply-chain",
-			Metadata: map[string]interface{}{
-				"signed": true,
-				"digest": digest,
-			},
-		}
-		findings = append(findings, finding)
 	}
+	// Note: If signed, no finding is reported - security scanners should only report problems
 
 	return findings, nil
 }

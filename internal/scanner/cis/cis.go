@@ -262,7 +262,7 @@ func (s *CISScanner) checkUnnecessaryPackages(ctx context.Context, imageName str
 func (s *CISScanner) checkContentTrust(ctx context.Context, imageName string, info *docker.ImageInfo) []models.Finding {
 	var findings []models.Finding
 
-	signed, digest, err := s.dockerClient.VerifyImageSignature(ctx, imageName)
+	signed, _, err := s.dockerClient.VerifyImageSignature(ctx, imageName)
 	if err != nil {
 		// Non-fatal, continue
 		return findings
@@ -286,22 +286,8 @@ func (s *CISScanner) checkContentTrust(ctx context.Context, imageName string, in
 			},
 		}
 		findings = append(findings, finding)
-	} else {
-		// Info finding - image is signed
-		finding := models.Finding{
-			ID:          "CIS-4.5-PASS",
-			Title:       "Image has digest/signature",
-			Description: fmt.Sprintf("The image has a verifiable digest: %s", digest),
-			Severity:    models.SeverityInfo,
-			Category:    "CIS-Benchmark",
-			Source:      "cis-benchmark",
-			Metadata: map[string]interface{}{
-				"digest":      digest,
-				"cis_control": "4.5",
-			},
-		}
-		findings = append(findings, finding)
 	}
+	// Note: If signed, no finding is reported - security scanners should only report problems
 
 	return findings
 }
@@ -772,21 +758,9 @@ func (s *CISScanner) checkShellPresence(ctx context.Context, imageName string) [
 		return findings
 	}
 
-	if len(foundShells) == 0 {
-		// This is actually good - distroless image
-		finding := models.Finding{
-			ID:          "CIS-DISTROLESS",
-			Title:       "Image appears to be shell-less (distroless)",
-			Description: "No common shells were found in the image. This is a security best practice as it reduces the attack surface.",
-			Severity:    models.SeverityInfo,
-			Category:    "CIS-Benchmark",
-			Source:      "cis-benchmark",
-			Metadata: map[string]interface{}{
-				"shells_checked": shellPaths,
-			},
-		}
-		findings = append(findings, finding)
-	} else {
+	// Only report if shells are found (potential security concern)
+	// Note: No shells (distroless) is good practice, so we don't report it
+	if len(foundShells) > 0 {
 		finding := models.Finding{
 			ID:          "CIS-SHELL-PRESENT",
 			Title:       "Image contains shell interpreters",

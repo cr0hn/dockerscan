@@ -61,11 +61,10 @@ type ScanResult struct {
 
 // Summary provides quick statistics
 type Summary struct {
-	TotalFindings int            `json:"total_findings"`
+	TotalFindings int              `json:"total_findings"`
 	BySeverity    map[Severity]int `json:"by_severity"`
-	ByCategory    map[string]int `json:"by_category"`
-	Passed        int            `json:"passed"`
-	Failed        int            `json:"failed"`
+	ByCategory    map[string]int   `json:"by_category"`
+	// Note: Passed/Failed fields removed - security scanners report problems, not passes
 }
 
 // Vulnerability represents a CVE or security vulnerability
