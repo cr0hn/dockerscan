@@ -1,6 +1,7 @@
 package vulnerabilities
 
 import (
+	"context"
 	"testing"
 
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
@@ -386,81 +387,22 @@ func TestIsBaseImageVulnerable(t *testing.T) {
 	}
 }
 
-func TestCheckVulnerablePackages(t *testing.T) {
-	scanner := NewVulnerabilityScanner(nil)
+func TestCheckVulnerablePackages_NoDB(t *testing.T) {
+	// Test that checkVulnerablePackages handles nil database gracefully
+	scanner := NewVulnerabilityScanner(nil, nil)
 
-	tests := []struct {
-		name             string
-		packages         []docker.PackageInfo
-		expectedFindings int
-		expectedCVE      string
-	}{
+	packages := []docker.PackageInfo{
 		{
-			name: "vulnerable openssl heartbleed",
-			packages: []docker.PackageInfo{
-				{
-					Name:    "openssl",
-					Version: "1.0.1e",
-					Source:  "dpkg",
-				},
-			},
-			expectedFindings: 1,
-			expectedCVE:      "CVE-2014-0160",
-		},
-		{
-			name: "fixed openssl",
-			packages: []docker.PackageInfo{
-				{
-					Name:    "openssl",
-					Version: "1.0.1g",
-					Source:  "dpkg",
-				},
-			},
-			expectedFindings: 0,
-		},
-		{
-			name: "vulnerable bash shellshock",
-			packages: []docker.PackageInfo{
-				{
-					Name:    "bash",
-					Version: "4.2",
-					Source:  "dpkg",
-				},
-			},
-			expectedFindings: 1,
-			expectedCVE:      "CVE-2014-6271",
-		},
-		{
-			name: "no vulnerable packages",
-			packages: []docker.PackageInfo{
-				{
-					Name:    "curl",
-					Version: "8.5.0",
-					Source:  "apk",
-				},
-			},
-			expectedFindings: 0,
+			Name:    "openssl",
+			Version: "1.0.1e",
+			Source:  "dpkg",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			findings := scanner.checkVulnerablePackages(tt.packages)
-			if len(findings) != tt.expectedFindings {
-				t.Errorf("Expected %d findings, got %d", tt.expectedFindings, len(findings))
-			}
-			if tt.expectedCVE != "" && len(findings) > 0 {
-				found := false
-				for _, f := range findings {
-					if val, ok := f.Metadata["cve_id"].(string); ok && val == tt.expectedCVE {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("Expected to find CVE %s in findings", tt.expectedCVE)
-				}
-			}
-		})
+	// Should not panic when no DB - returns nil or empty slice
+	findings := scanner.checkVulnerablePackages(context.Background(), packages)
+	// Without a database, no findings should be returned
+	if len(findings) != 0 {
+		t.Errorf("Expected 0 findings without DB, got %d", len(findings))
 	}
 }
