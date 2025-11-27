@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/cr0hn/dockerscan/v2/internal/config"
@@ -16,6 +17,7 @@ import (
 	"github.com/cr0hn/dockerscan/v2/internal/scanner/supplychain"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner/vulnerabilities"
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
+	"github.com/olekukonko/tablewriter"
 )
 
 func main() {
@@ -182,10 +184,8 @@ func printSummary(result *models.ScanResult) {
 
 // printSeverityTable prints the severity summary in a bordered table format
 func printSeverityTable(bySeverity map[models.Severity]int) {
-	// Table header
-	fmt.Println("   ┌────────────┬───────┐")
-	fmt.Println("   │ Severity   │ Count │")
-	fmt.Println("   ├────────────┼───────┤")
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("Severity", "Count")
 
 	// Severity rows in order
 	severities := []models.Severity{
@@ -198,11 +198,10 @@ func printSeverityTable(bySeverity map[models.Severity]int) {
 
 	for _, severity := range severities {
 		count := bySeverity[severity]
-		fmt.Printf("   │ %-10s │ %5d │\n", severity, count)
+		table.Append(string(severity), fmt.Sprintf("%d", count))
 	}
 
-	// Table footer
-	fmt.Println("   └────────────┴───────┘")
+	table.Render()
 }
 
 // printCategoryTable prints the category summary in a bordered table format
@@ -212,30 +211,15 @@ func printCategoryTable(byCategory map[string]int) {
 		return
 	}
 
-	// Calculate max category name length for column width
-	maxLen := 15
-	for category := range byCategory {
-		if len(category) > maxLen {
-			maxLen = len(category)
-		}
-	}
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("Category", "Count")
 
-	// Build format strings for dynamic width
-	headerFormat := fmt.Sprintf("   │ %%-%ds │ Count │\n", maxLen)
-	rowFormat := fmt.Sprintf("   │ %%-%ds │ %%5d │\n", maxLen)
-
-	// Table header
-	printTableBorder(maxLen, "top")
-	fmt.Printf(headerFormat, "Category")
-	printTableBorder(maxLen, "middle")
-
-	// Category rows (sorted for consistent output)
+	// Category rows
 	for category, count := range byCategory {
-		fmt.Printf(rowFormat, category, count)
+		table.Append(category, fmt.Sprintf("%d", count))
 	}
 
-	// Table footer
-	printTableBorder(maxLen, "bottom")
+	table.Render()
 }
 
 // printFindingsTable prints detailed findings in a clean table format
@@ -246,229 +230,37 @@ func printFindingsTable(findings []models.Finding) {
 
 	fmt.Println()
 
-	// Fixed column widths for a clean table
-	const (
-		numWidth      = 3
-		severityWidth = 10
-		idWidth       = 15
-		titleWidth    = 54 // Title/Description column width for ~120 char total table width
-	)
-
-	// Build format strings
-	headerFormat := fmt.Sprintf("   │ %%3s │ %%-%ds │ %%-%ds │ %%-%ds │\n", severityWidth, idWidth, titleWidth)
-	rowFormat := fmt.Sprintf("   │ %%3d │ %%-%ds │ %%-%ds │ %%-%ds │\n", severityWidth, idWidth, titleWidth)
-	contFormat := fmt.Sprintf("   │ %%3s │ %%-%ds │ %%-%ds │ %%-%ds │\n", severityWidth, idWidth, titleWidth)
-
-	// Table header
-	printFindingsTableBorder(titleWidth, "top")
-	fmt.Printf(headerFormat, "#", "Severity", "ID", "Title")
-	printFindingsTableBorder(titleWidth, "middle")
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("#", "Severity", "ID", "Details")
 
 	// Findings rows
 	for i, finding := range findings {
 		severitySymbol := getSeveritySymbol(finding.Severity)
 		sevStr := fmt.Sprintf("%s %s", severitySymbol, finding.Severity)
 
-		// Wrap title if too long
-		titleLines := wrapText(finding.Title, titleWidth)
+		// Build details column with title, description, and remediation
+		var details strings.Builder
+		details.WriteString(finding.Title)
 
-		// Truncate ID if too long
-		id := finding.ID
-		if len(id) > idWidth {
-			id = id[:idWidth-3] + "..."
-		}
-
-		// Print first row with number, severity, ID, and first line of title
-		if len(titleLines) > 0 {
-			fmt.Printf(rowFormat, i+1, sevStr, id, titleLines[0])
-
-			// Print remaining title lines (if any)
-			for j := 1; j < len(titleLines); j++ {
-				fmt.Printf(contFormat, "", "", "", titleLines[j])
-			}
-		} else {
-			fmt.Printf(rowFormat, i+1, sevStr, id, "")
-		}
-
-		// Print description with word wrap
 		if finding.Description != "" {
-			descLines := wrapText("Description: "+finding.Description, titleWidth)
-			for _, line := range descLines {
-				fmt.Printf(contFormat, "", "", "", line)
-			}
+			details.WriteString("\n\nDescription: ")
+			details.WriteString(finding.Description)
 		}
 
-		// Print remediation with word wrap
 		if finding.Remediation != "" {
-			remLines := wrapText("💡 Remediation: "+finding.Remediation, titleWidth)
-			for _, line := range remLines {
-				fmt.Printf(contFormat, "", "", "", line)
-			}
+			details.WriteString("\n\n💡 Remediation: ")
+			details.WriteString(finding.Remediation)
 		}
 
-		// Add separator between findings (except for last one)
-		if i < len(findings)-1 {
-			printFindingsTableBorder(titleWidth, "separator")
-		}
+		table.Append(
+			fmt.Sprintf("%d", i+1),
+			sevStr,
+			finding.ID,
+			details.String(),
+		)
 	}
 
-	// Table footer
-	printFindingsTableBorder(titleWidth, "bottom")
-}
-
-// wrapText splits text into lines that fit within maxWidth
-// It breaks on word boundaries when possible and handles emoji correctly
-func wrapText(text string, maxWidth int) []string {
-	if text == "" {
-		return []string{}
-	}
-
-	var lines []string
-	words := splitIntoWords(text)
-	currentLine := ""
-
-	for _, word := range words {
-		// Calculate visual width (emojis count as 2 chars)
-		testLine := currentLine
-		if currentLine != "" {
-			testLine += " "
-		}
-		testLine += word
-
-		visualWidth := calculateVisualWidth(testLine)
-
-		if visualWidth <= maxWidth {
-			// Word fits on current line
-			if currentLine != "" {
-				currentLine += " "
-			}
-			currentLine += word
-		} else {
-			// Word doesn't fit
-			if currentLine != "" {
-				// Save current line and start new one
-				lines = append(lines, padRight(currentLine, maxWidth))
-				currentLine = word
-			} else {
-				// Single word is too long, force break it
-				if len(word) > maxWidth {
-					lines = append(lines, padRight(word[:maxWidth], maxWidth))
-					currentLine = ""
-				} else {
-					currentLine = word
-				}
-			}
-		}
-	}
-
-	// Add remaining line
-	if currentLine != "" {
-		lines = append(lines, padRight(currentLine, maxWidth))
-	}
-
-	// If no lines were created, return empty line
-	if len(lines) == 0 {
-		lines = append(lines, padRight("", maxWidth))
-	}
-
-	return lines
-}
-
-// splitIntoWords splits text into words, preserving emojis
-func splitIntoWords(text string) []string {
-	var words []string
-	currentWord := ""
-
-	for _, r := range text {
-		if r == ' ' || r == '\t' || r == '\n' {
-			if currentWord != "" {
-				words = append(words, currentWord)
-				currentWord = ""
-			}
-		} else {
-			currentWord += string(r)
-		}
-	}
-
-	if currentWord != "" {
-		words = append(words, currentWord)
-	}
-
-	return words
-}
-
-// calculateVisualWidth returns the visual width of a string
-// Emojis and some Unicode characters take up 2 character widths
-func calculateVisualWidth(s string) int {
-	width := 0
-	for _, r := range s {
-		// Most emojis are in these ranges
-		if r >= 0x1F300 && r <= 0x1F9FF { // Emoji range
-			width += 2
-		} else if r >= 0x2600 && r <= 0x26FF { // Miscellaneous symbols
-			width += 2
-		} else if r >= 0x2700 && r <= 0x27BF { // Dingbats
-			width += 2
-		} else if r == 0x203C || r == 0x2049 { // Other emoji-like chars
-			width += 2
-		} else {
-			width += 1
-		}
-	}
-	return width
-}
-
-// padRight pads a string with spaces to reach the target width
-// Takes into account emoji visual width
-func padRight(s string, width int) string {
-	visualWidth := calculateVisualWidth(s)
-	if visualWidth >= width {
-		return s
-	}
-	padding := width - visualWidth
-	for i := 0; i < padding; i++ {
-		s += " "
-	}
-	return s
-}
-
-// printTableBorder prints a table border for category table
-func printTableBorder(categoryWidth int, position string) {
-	switch position {
-	case "top":
-		fmt.Printf("   ┌%s┬───────┐\n", repeatChar('─', categoryWidth+2))
-	case "middle":
-		fmt.Printf("   ├%s┼───────┤\n", repeatChar('─', categoryWidth+2))
-	case "bottom":
-		fmt.Printf("   └%s┴───────┘\n", repeatChar('─', categoryWidth+2))
-	}
-}
-
-// printFindingsTableBorder prints a table border for findings table
-func printFindingsTableBorder(titleWidth int, position string) {
-	switch position {
-	case "top":
-		fmt.Printf("   ┌─────┬────────────┬%s┬%s┐\n",
-			repeatChar('─', 17), repeatChar('─', titleWidth+2))
-	case "middle":
-		fmt.Printf("   ├─────┼────────────┼%s┼%s┤\n",
-			repeatChar('─', 17), repeatChar('─', titleWidth+2))
-	case "separator":
-		fmt.Printf("   ├─────┼────────────┼%s┼%s┤\n",
-			repeatChar('─', 17), repeatChar('─', titleWidth+2))
-	case "bottom":
-		fmt.Printf("   └─────┴────────────┴%s┴%s┘\n",
-			repeatChar('─', 17), repeatChar('─', titleWidth+2))
-	}
-}
-
-// repeatChar returns a string with the character repeated n times
-func repeatChar(char rune, count int) string {
-	result := make([]rune, count)
-	for i := range result {
-		result[i] = char
-	}
-	return string(result)
+	table.Render()
 }
 
 func getSeveritySymbol(severity models.Severity) string {
