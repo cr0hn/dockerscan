@@ -102,8 +102,8 @@ func TestCISScanner_CheckHealthcheck(t *testing.T) {
 	for _, finding := range findings {
 		if finding.ID == "CIS-4.6" {
 			found = true
-			if finding.Severity != models.SeverityLow {
-				t.Errorf("Expected LOW severity for HEALTHCHECK, got %s", finding.Severity)
+			if finding.Severity != models.SeverityMedium {
+				t.Errorf("Expected MEDIUM severity for HEALTHCHECK, got %s", finding.Severity)
 			}
 		}
 	}
@@ -133,8 +133,8 @@ func TestCISScanner_CheckImageTag(t *testing.T) {
 	for _, finding := range findings {
 		if finding.ID == "CIS-4.7" {
 			found = true
-			if finding.Severity != models.SeverityMedium {
-				t.Errorf("Expected MEDIUM severity for latest tag, got %s", finding.Severity)
+			if finding.Severity != models.SeverityHigh {
+				t.Errorf("Expected HIGH severity for latest tag, got %s", finding.Severity)
 			}
 		}
 	}
