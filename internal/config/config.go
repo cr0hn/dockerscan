@@ -57,32 +57,32 @@ func NewDefaultConfig() *Config {
 
 // Banner returns the application banner
 func Banner() string {
-	return fmt.Sprintf(`
-╔══════════════════════════════════════════════════════════════════════════╗
-║                                                                          ║
-║   ██████╗  ██████╗  ██████╗██╗  ██╗███████╗██████╗ ███████╗ ██████╗ █████╗ ███╗   ██╗
-║   ██╔══██╗██╔═══██╗██╔════╝██║ ██╔╝██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║
-║   ██║  ██║██║   ██║██║     █████╔╝ █████╗  ██████╔╝███████╗██║     ███████║██╔██╗ ██║
-║   ██║  ██║██║   ██║██║     ██╔═██╗ ██╔══╝  ██╔══██╗╚════██║██║     ██╔══██║██║╚██╗██║
-║   ██████╔╝╚██████╔╝╚██████╗██║  ██╗███████╗██║  ██║███████║╚██████╗██║  ██║██║ ╚████║
-║   ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝
-║                                                                          ║
-║                    Advanced Docker Security Scanner v%s                 ║
-║                                                                          ║
-║   Author:     %s                                        ║
-║   Website:    %s                                       ║
-║   Repository: %s                  ║
-║                                                                          ║
-║   The most comprehensive Docker security analysis tool                  ║
-║   • CIS Docker Benchmark v1.7.0                                        ║
-║   • Supply Chain Attack Detection                                       ║
-║   • CVE & Vulnerability Scanning                                        ║
-║   • Secrets Detection (AWS, GCP, Azure, API Keys, JWT, etc.)          ║
-║   • Runtime Security Analysis                                           ║
-║   • SARIF & JSON Reporting                                             ║
-║                                                                          ║
-╚══════════════════════════════════════════════════════════════════════════╝
-`, Version, Author, Website, Repository)
+	return `
+╔════════════════════════════════════════════════════════════════════════════════════════╗
+║                                                                                        ║
+║   ██████╗  ██████╗  ██████╗██╗  ██╗███████╗██████╗ ███████╗ ██████╗ █████╗ ███╗   ██╗  ║
+║   ██╔══██╗██╔═══██╗██╔════╝██║ ██╔╝██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║  ║
+║   ██║  ██║██║   ██║██║     █████╔╝ █████╗  ██████╔╝███████╗██║     ███████║██╔██╗ ██║  ║
+║   ██║  ██║██║   ██║██║     ██╔═██╗ ██╔══╝  ██╔══██╗╚════██║██║     ██╔══██║██║╚██╗██║  ║
+║   ██████╔╝╚██████╔╝╚██████╗██║  ██╗███████╗██║  ██║███████║╚██████╗██║  ██║██║ ╚████║  ║
+║   ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝  ║
+║                                                                                        ║
+║                        Advanced Docker Security Scanner v2.0.0                         ║
+║                                                                                        ║
+║   Author:     Daniel Garcia (cr0hn)                                                    ║
+║   Website:    https://cr0hn.com                                                        ║
+║   Repository: https://github.com/cr0hn/dockerscan                                      ║
+║                                                                                        ║
+║   The most comprehensive Docker security analysis tool                                 ║
+║   • CIS Docker Benchmark v1.7.0                                                        ║
+║   • Supply Chain Attack Detection                                                      ║
+║   • CVE & Vulnerability Scanning                                                       ║
+║   • Secrets Detection (AWS, GCP, Azure, API Keys, JWT, etc.)                           ║
+║   • Runtime Security Analysis                                                          ║
+║   • SARIF & JSON Reporting                                                             ║
+║                                                                                        ║
+╚════════════════════════════════════════════════════════════════════════════════════════╝
+`
 }
 
 // ShortBanner returns a compact banner

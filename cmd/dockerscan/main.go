@@ -18,6 +18,7 @@ import (
 	"github.com/cr0hn/dockerscan/v2/internal/scanner/vulnerabilities"
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 )
 
 func main() {
@@ -231,8 +232,14 @@ func printFindingsTable(findings []models.Finding) {
 	fmt.Println()
 
 	table := tablewriter.NewTable(os.Stdout,
-		tablewriter.WithRowAutoWrap(60),
-		tablewriter.WithMaxWidth(120),
+		tablewriter.WithColumnMax(70),
+		tablewriter.WithRendition(tw.Rendition{
+			Settings: tw.Settings{
+				Separators: tw.Separators{
+					BetweenRows: tw.On,
+				},
+			},
+		}),
 	)
 	table.Header("#", "Severity", "ID", "Details")
 
