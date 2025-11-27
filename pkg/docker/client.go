@@ -18,6 +18,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 	"github.com/moby/go-archive"
 )
 
@@ -51,7 +52,8 @@ func (c *Client) Ping(ctx context.Context) error {
 func (c *Client) ImageExists(ctx context.Context, imageName string) (bool, error) {
 	_, err := c.cli.ImageInspect(ctx, imageName)
 	if err != nil {
-		if strings.Contains(err.Error(), "No such image") {
+		// Use proper Docker API error type instead of string matching
+		if errdefs.IsNotFound(err) {
 			return false, nil
 		}
 		return false, err
@@ -371,7 +373,8 @@ func (c *Client) ListPackages(ctx context.Context, imageName string) ([]PackageI
 		if info.Path == "var/lib/dpkg/status" || info.Path == "/var/lib/dpkg/status" {
 			content, err := io.ReadAll(reader)
 			if err != nil {
-				return nil
+				// Propagate read errors instead of silently ignoring them
+				return fmt.Errorf("failed to read dpkg status file: %w", err)
 			}
 			packages = append(packages, parseDpkgStatus(content)...)
 		}
@@ -383,7 +386,8 @@ func (c *Client) ListPackages(ctx context.Context, imageName string) ([]PackageI
 		if info.Path == "lib/apk/db/installed" || info.Path == "/lib/apk/db/installed" {
 			content, err := io.ReadAll(reader)
 			if err != nil {
-				return nil
+				// Propagate read errors instead of silently ignoring them
+				return fmt.Errorf("failed to read apk installed file: %w", err)
 			}
 			packages = append(packages, parseApkInstalled(content)...)
 		}
@@ -416,12 +420,16 @@ func parseDpkgStatus(content []byte) []PackageInfo {
 		} else if strings.HasPrefix(line, "Version: ") {
 			currentPkg.Version = strings.TrimPrefix(line, "Version: ")
 		} else if line == "" && currentPkg.Name != "" {
-			packages = append(packages, currentPkg)
+			// Only add package if it has both name and version
+			if currentPkg.Version != "" {
+				packages = append(packages, currentPkg)
+			}
 			currentPkg = PackageInfo{}
 		}
 	}
 
-	if currentPkg.Name != "" {
+	// Only add final package if it has both name and version
+	if currentPkg.Name != "" && currentPkg.Version != "" {
 		packages = append(packages, currentPkg)
 	}
 
@@ -443,12 +451,16 @@ func parseApkInstalled(content []byte) []PackageInfo {
 		} else if strings.HasPrefix(line, "V:") {
 			currentPkg.Version = strings.TrimPrefix(line, "V:")
 		} else if line == "" && currentPkg.Name != "" {
-			packages = append(packages, currentPkg)
+			// Only add package if it has both name and version
+			if currentPkg.Version != "" {
+				packages = append(packages, currentPkg)
+			}
 			currentPkg = PackageInfo{}
 		}
 	}
 
-	if currentPkg.Name != "" {
+	// Only add final package if it has both name and version
+	if currentPkg.Name != "" && currentPkg.Version != "" {
 		packages = append(packages, currentPkg)
 	}
 
@@ -550,8 +562,10 @@ func (c *Client) ListContainers(ctx context.Context, all bool) ([]ContainerInfo,
 	return infos, nil
 }
 
-// SearchFileContent searches for patterns in file content
-func (c *Client) SearchFileContent(ctx context.Context, imageName string, patterns map[string]*regexp.Regexp, maxFileSize int64) ([]SecretMatch, error) {
+// SearchFileContent searches for patterns in file content.
+// maxMatches limits the total number of matches to prevent unbounded memory growth.
+// Use 0 for unlimited matches (not recommended for production).
+func (c *Client) SearchFileContent(ctx context.Context, imageName string, patterns map[string]*regexp.Regexp, maxFileSize int64, maxMatches int) ([]SecretMatch, error) {
 	var matches []SecretMatch
 
 	err := c.ScanImageFiles(ctx, imageName, func(info FileInfo, reader io.Reader) error {
@@ -587,6 +601,15 @@ func (c *Client) SearchFileContent(ctx context.Context, imageName string, patter
 		for name, pattern := range patterns {
 			if locs := pattern.FindAllIndex(content, -1); locs != nil {
 				for _, loc := range locs {
+					// Check if we've hit the match limit (if configured)
+					if maxMatches > 0 && len(matches) >= maxMatches {
+						return fmt.Errorf("match limit reached (%d), stopping search to prevent memory exhaustion", maxMatches)
+					}
+
+					// Validate slice bounds before accessing
+					if len(loc) != 2 || loc[0] < 0 || loc[1] > len(content) || loc[0] > loc[1] {
+						continue // Skip invalid match indices
+					}
 					lineNum := bytes.Count(content[:loc[0]], []byte("\n")) + 1
 					match := string(content[loc[0]:loc[1]])
 
@@ -614,13 +637,21 @@ type SecretMatch struct {
 	Match       string
 }
 
-// isBinary checks if content appears to be binary
+// isBinary checks if content appears to be binary by detecting null bytes.
+//
+// LIMITATION: This simple heuristic may incorrectly classify UTF-16 and UTF-32
+// encoded text files as binary since they contain null bytes. For more accurate
+// detection, consider using a library like github.com/h2non/filetype or
+// implementing BOM (Byte Order Mark) detection for UTF-16/UTF-32.
+//
+// The check examines up to the first 8KB of content for performance reasons.
 func isBinary(content []byte) bool {
 	if len(content) == 0 {
 		return false
 	}
 
 	// Check for null bytes in first 8KB
+	// Note: This will flag UTF-16/UTF-32 text as binary
 	checkLen := len(content)
 	if checkLen > 8192 {
 		checkLen = 8192

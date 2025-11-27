@@ -156,7 +156,9 @@ func (s *SupplyChainScanner) detectCryptoMiners(ctx context.Context, target mode
 	}
 
 	// Search for patterns in all files
-	matches, err := s.dockerClient.SearchFileContent(ctx, target.ImageName, minerPatterns, 10*1024*1024) // Max 10MB per file
+	const maxFileSize = 10 * 1024 * 1024 // Max 10MB per file
+	const maxMatches = 10000             // Limit matches to prevent memory exhaustion
+	matches, err := s.dockerClient.SearchFileContent(ctx, target.ImageName, minerPatterns, maxFileSize, maxMatches)
 	if err != nil {
 		return findings, err
 	}
@@ -403,7 +405,9 @@ func (s *SupplyChainScanner) detectSuspiciousConnections(ctx context.Context, ta
 	}
 
 	// Search for patterns in all files
-	matches, err := s.dockerClient.SearchFileContent(ctx, target.ImageName, suspiciousPatterns, 5*1024*1024) // Max 5MB per file
+	const maxFileSize = 5 * 1024 * 1024 // Max 5MB per file
+	const maxMatches = 10000            // Limit matches to prevent memory exhaustion
+	matches, err := s.dockerClient.SearchFileContent(ctx, target.ImageName, suspiciousPatterns, maxFileSize, maxMatches)
 	if err != nil {
 		return findings, nil // Non-fatal
 	}
