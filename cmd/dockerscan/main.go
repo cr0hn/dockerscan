@@ -163,37 +163,186 @@ func printSummary(result *models.ScanResult) {
 	fmt.Printf("   Total Findings: %d\n", result.Summary.TotalFindings)
 	fmt.Printf("   Duration: %s\n\n", result.Duration)
 
+	// Print severity table
 	fmt.Println("🔴 By Severity:")
-	fmt.Printf("   Critical: %d\n", result.Summary.BySeverity[models.SeverityCritical])
-	fmt.Printf("   High:     %d\n", result.Summary.BySeverity[models.SeverityHigh])
-	fmt.Printf("   Medium:   %d\n", result.Summary.BySeverity[models.SeverityMedium])
-	fmt.Printf("   Low:      %d\n", result.Summary.BySeverity[models.SeverityLow])
-	fmt.Printf("   Info:     %d\n\n", result.Summary.BySeverity[models.SeverityInfo])
+	printSeverityTable(result.Summary.BySeverity)
 
-	fmt.Println("📁 By Category:")
-	for category, count := range result.Summary.ByCategory {
-		fmt.Printf("   %-20s %d\n", category+":", count)
-	}
+	// Print category table
+	fmt.Println("\n📁 By Category:")
+	printCategoryTable(result.Summary.ByCategory)
 
 	fmt.Println("\n═══════════════════════════════════════════════════════════════════")
 
 	// Print detailed findings
 	if len(result.Findings) > 0 {
 		fmt.Println("\n🔍 Detailed Findings:")
+		printFindingsTable(result.Findings)
+	}
+}
 
-		for i, finding := range result.Findings {
-			severitySymbol := getSeveritySymbol(finding.Severity)
-			fmt.Printf("%d. %s [%s] %s\n", i+1, severitySymbol, finding.Severity, finding.Title)
-			fmt.Printf("   ID: %s\n", finding.ID)
-			fmt.Printf("   %s\n", finding.Description)
+// printSeverityTable prints the severity summary in a bordered table format
+func printSeverityTable(bySeverity map[models.Severity]int) {
+	// Table header
+	fmt.Println("   ┌────────────┬───────┐")
+	fmt.Println("   │ Severity   │ Count │")
+	fmt.Println("   ├────────────┼───────┤")
 
-			if finding.Remediation != "" {
-				fmt.Printf("   💡 Remediation: %s\n", finding.Remediation)
-			}
+	// Severity rows in order
+	severities := []models.Severity{
+		models.SeverityCritical,
+		models.SeverityHigh,
+		models.SeverityMedium,
+		models.SeverityLow,
+		models.SeverityInfo,
+	}
 
-			fmt.Println()
+	for _, severity := range severities {
+		count := bySeverity[severity]
+		fmt.Printf("   │ %-10s │ %5d │\n", severity, count)
+	}
+
+	// Table footer
+	fmt.Println("   └────────────┴───────┘")
+}
+
+// printCategoryTable prints the category summary in a bordered table format
+func printCategoryTable(byCategory map[string]int) {
+	if len(byCategory) == 0 {
+		fmt.Println("   No categories found")
+		return
+	}
+
+	// Calculate max category name length for column width
+	maxLen := 15
+	for category := range byCategory {
+		if len(category) > maxLen {
+			maxLen = len(category)
 		}
 	}
+
+	// Build format strings for dynamic width
+	headerFormat := fmt.Sprintf("   │ %%-%ds │ Count │\n", maxLen)
+	rowFormat := fmt.Sprintf("   │ %%-%ds │ %%5d │\n", maxLen)
+
+	// Table header
+	printTableBorder(maxLen, "top")
+	fmt.Printf(headerFormat, "Category")
+	printTableBorder(maxLen, "middle")
+
+	// Category rows (sorted for consistent output)
+	for category, count := range byCategory {
+		fmt.Printf(rowFormat, category, count)
+	}
+
+	// Table footer
+	printTableBorder(maxLen, "bottom")
+}
+
+// printFindingsTable prints detailed findings in a clean table format
+func printFindingsTable(findings []models.Finding) {
+	if len(findings) == 0 {
+		return
+	}
+
+	fmt.Println()
+
+	// Calculate max title length for column width
+	maxTitleLen := 50
+	for _, finding := range findings {
+		if len(finding.Title) > maxTitleLen {
+			maxTitleLen = len(finding.Title)
+		}
+	}
+
+	// Cap the title length to keep table reasonable
+	if maxTitleLen > 80 {
+		maxTitleLen = 80
+	}
+
+	// Build format strings
+	headerFormat := fmt.Sprintf("   │ %%3s │ %%10s │ %%-%ds │ %%-%ds │\n", 15, maxTitleLen)
+	rowFormat := fmt.Sprintf("   │ %%3d │ %%10s │ %%-%ds │ %%-%ds │\n", 15, maxTitleLen)
+
+	// Table header
+	printFindingsTableBorder(maxTitleLen, "top")
+	fmt.Printf(headerFormat, "#", "Severity", "ID", "Title")
+	printFindingsTableBorder(maxTitleLen, "middle")
+
+	// Findings rows
+	for i, finding := range findings {
+		severitySymbol := getSeveritySymbol(finding.Severity)
+		sevStr := fmt.Sprintf("%s %s", severitySymbol, finding.Severity)
+
+		// Truncate title if too long
+		title := finding.Title
+		if len(title) > maxTitleLen {
+			title = title[:maxTitleLen-3] + "..."
+		}
+
+		// Truncate ID if too long
+		id := finding.ID
+		if len(id) > 15 {
+			id = id[:12] + "..."
+		}
+
+		fmt.Printf(rowFormat, i+1, sevStr, id, title)
+
+		// Print description and remediation below the table row
+		if finding.Description != "" {
+			fmt.Printf("   │     │            │ Description: %s\n", finding.Description)
+		}
+
+		if finding.Remediation != "" {
+			fmt.Printf("   │     │            │ 💡 Remediation: %s\n", finding.Remediation)
+		}
+
+		// Add separator between findings (except for last one)
+		if i < len(findings)-1 {
+			printFindingsTableBorder(maxTitleLen, "separator")
+		}
+	}
+
+	// Table footer
+	printFindingsTableBorder(maxTitleLen, "bottom")
+}
+
+// printTableBorder prints a table border for category table
+func printTableBorder(categoryWidth int, position string) {
+	switch position {
+	case "top":
+		fmt.Printf("   ┌%s┬───────┐\n", repeatChar('─', categoryWidth+2))
+	case "middle":
+		fmt.Printf("   ├%s┼───────┤\n", repeatChar('─', categoryWidth+2))
+	case "bottom":
+		fmt.Printf("   └%s┴───────┘\n", repeatChar('─', categoryWidth+2))
+	}
+}
+
+// printFindingsTableBorder prints a table border for findings table
+func printFindingsTableBorder(titleWidth int, position string) {
+	switch position {
+	case "top":
+		fmt.Printf("   ┌─────┬────────────┬%s┬%s┐\n",
+			repeatChar('─', 17), repeatChar('─', titleWidth+2))
+	case "middle":
+		fmt.Printf("   ├─────┼────────────┼%s┼%s┤\n",
+			repeatChar('─', 17), repeatChar('─', titleWidth+2))
+	case "separator":
+		fmt.Printf("   ├─────┼────────────┼%s┼%s┤\n",
+			repeatChar('─', 17), repeatChar('─', titleWidth+2))
+	case "bottom":
+		fmt.Printf("   └─────┴────────────┴%s┴%s┘\n",
+			repeatChar('─', 17), repeatChar('─', titleWidth+2))
+	}
+}
+
+// repeatChar returns a string with the character repeated n times
+func repeatChar(char rune, count int) string {
+	result := make([]rune, count)
+	for i := range result {
+		result[i] = char
+	}
+	return string(result)
 }
 
 func getSeveritySymbol(severity models.Severity) string {
