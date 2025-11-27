@@ -1,0 +1,7 @@
+# Ignore uncompressed SQLite files (only keep compressed)
+*.sqlite
+
+# Keep compressed database and metadata
+!latest.db.gz
+!latest.db.gz.sha256
+!metadata.json
