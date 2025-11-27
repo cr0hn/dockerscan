@@ -27,24 +27,41 @@ const (
 	defaultDBPath = "~/.dockerscan/cve-db.sqlite"
 )
 
+var quietMode bool
+
 func main() {
-	// Print banner
-	fmt.Print(config.Banner())
+	// Check for quiet mode first (before printing banner)
+	quietMode = hasFlag("-q") || hasFlag("--quiet")
+
+	// Check for help/version flags anywhere in args
+	if hasFlag("-h") || hasFlag("--help") || hasFlag("help") {
+		if !quietMode {
+			fmt.Print(config.Banner())
+		}
+		printUsage()
+		return
+	}
+
+	if hasFlag("-v") || hasFlag("--version") || hasFlag("version") {
+		fmt.Printf("dockerscan %s\n", config.Version)
+		return
+	}
+
+	// Print banner unless quiet mode
+	if !quietMode {
+		fmt.Print(config.Banner())
+	}
 
 	// Handle subcommands
 	if len(os.Args) >= 2 {
-		switch os.Args[1] {
+		// Skip flags to find actual command
+		cmd := getCommand()
+		switch cmd {
 		case "update-db":
 			if err := handleUpdateDB(); err != nil {
 				fmt.Fprintf(os.Stderr, "\n❌ Error: %v\n", err)
 				os.Exit(1)
 			}
-			return
-		case "version", "--version", "-v":
-			fmt.Printf("dockerscan %s\n", config.Version)
-			return
-		case "help", "--help", "-h":
-			printUsage()
 			return
 		}
 	}
@@ -68,23 +85,12 @@ func main() {
 	cfg := config.NewDefaultConfig()
 
 	// Get image name from args
-	// Support both: dockerscan <image> and dockerscan scan <image>
-	if len(os.Args) < 2 {
-		printUsage()
+	imageName := getImageName()
+	if imageName == "" {
+		fmt.Fprintf(os.Stderr, "\n❌ Error: No image specified.\n")
+		fmt.Fprintf(os.Stderr, "   Usage: dockerscan [options] <image>\n")
+		fmt.Fprintf(os.Stderr, "   Example: dockerscan nginx:latest\n\n")
 		os.Exit(1)
-	}
-
-	var imageName string
-	if os.Args[1] == "scan" {
-		if len(os.Args) < 3 {
-			fmt.Println("\nUsage: dockerscan scan <image-name>")
-			fmt.Println("\nExample:")
-			fmt.Println("  dockerscan scan nginx:latest")
-			os.Exit(1)
-		}
-		imageName = os.Args[2]
-	} else {
-		imageName = os.Args[1]
 	}
 
 	// Create Docker client
@@ -417,8 +423,39 @@ func expandPath(path string) string {
 	return path
 }
 
+// hasFlag checks if a flag is present in os.Args
+func hasFlag(flag string) bool {
+	for _, arg := range os.Args {
+		if arg == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// getCommand returns the first non-flag argument (the command)
+func getCommand() string {
+	for _, arg := range os.Args[1:] {
+		if !strings.HasPrefix(arg, "-") {
+			return arg
+		}
+	}
+	return ""
+}
+
+// getImageName returns the image name from args (first non-flag, non-command arg)
+func getImageName() string {
+	commands := map[string]bool{"scan": true, "update-db": true, "help": true, "version": true}
+	for _, arg := range os.Args[1:] {
+		if !strings.HasPrefix(arg, "-") && !commands[arg] {
+			return arg
+		}
+	}
+	return ""
+}
+
 func printUsage() {
-	fmt.Println(`
+	fmt.Printf(`
 Usage: dockerscan [command] [options] <image>
 
 Commands:
@@ -427,11 +464,71 @@ Commands:
   version     Show version information
   help        Show this help message
 
-Before first scan, run: dockerscan update-db
+Options:
+  -q, --quiet         Suppress banner output (quiet mode)
+  --scanners <list>   Comma-separated list of scanners to run
+                      Available: cis, secrets, supplychain, vulnerabilities, runtime
+  --output <dir>      Output directory for reports (default: current directory)
+  --only-critical     Show only CRITICAL severity findings
+  --verbose           Enable verbose output
 
-Examples:
-  dockerscan update-db
-  dockerscan nginx:latest
-  dockerscan --scanners cis,secrets alpine:3.18
-`)
+Exit Codes:
+  0   No issues found
+  1   HIGH severity issues found
+  2   CRITICAL severity found
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EXAMPLES
+
+  First-time setup (required before scanning):
+  ─────────────────────────────────────────────
+    $ dockerscan update-db
+
+  Basic image scan:
+  ─────────────────────────────────────────────
+    $ dockerscan nginx:latest
+    $ dockerscan ubuntu:22.04
+    $ dockerscan myregistry.com/myapp:v1.2.3
+
+  Scan with specific scanners only:
+  ─────────────────────────────────────────────
+    $ dockerscan --scanners cis nginx:latest
+    $ dockerscan --scanners secrets,vulnerabilities alpine:3.18
+    $ dockerscan --scanners cis,secrets,supplychain python:3.11
+
+  CI/CD integration (check exit code):
+  ─────────────────────────────────────────────
+    $ dockerscan myapp:$CI_COMMIT_SHA
+    $ if [ $? -eq 2 ]; then echo "Critical vulnerabilities!"; exit 1; fi
+
+  Scan local/private images:
+  ─────────────────────────────────────────────
+    $ docker build -t myapp:test .
+    $ dockerscan myapp:test
+
+  Scan and use SARIF report (GitHub Security):
+  ─────────────────────────────────────────────
+    $ dockerscan myapp:latest
+    $ cat dockerscan-report.sarif  # Upload to GitHub Security tab
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SCANNERS
+
+  cis             CIS Docker Benchmark v1.7.0 compliance checks
+  secrets         Detect hardcoded secrets, API keys, passwords (40+ patterns)
+  supplychain     Supply chain attack detection (malicious packages, miners)
+  vulnerabilities CVE vulnerability scanning using NVD database
+  runtime         Runtime security analysis (capabilities, seccomp, namespaces)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MORE INFO
+
+  Documentation:  https://github.com/cr0hn/dockerscan
+  Report issues:  https://github.com/cr0hn/dockerscan/issues
+  Version:        %s
+
+`, config.Version)
 }
