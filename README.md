@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🐋🔒 DockerScan v2.0
+<img src="logo.png" alt="DockerScan Logo" width="200">
+
+# DockerScan v2.0
 
 ### *The Most Comprehensive Docker Security Scanner*
 
@@ -678,25 +680,32 @@ fi
 ### Project Structure
 
 ```
-dockerscan-v2/
-├── cmd/dockerscan/          # Main CLI application
-│   └── main.go
+dockerscan/
+├── logo.png                 # Project logo
+├── cmd/
+│   ├── dockerscan/          # Main CLI application
+│   │   └── main.go
+│   └── nvd2sqlite/          # CVE database builder tool
+│       └── main.go
+├── data/                    # CVE database (auto-updated daily)
+│   ├── latest.db.gz         # Compressed SQLite database
+│   └── metadata.json        # Database version info
 ├── internal/
 │   ├── scanner/             # Extensible scanner framework
 │   │   ├── scanner.go       # Scanner interface & registry
-│   │   ├── cis/            # CIS Benchmark implementation
-│   │   ├── secrets/        # Secrets detection
-│   │   ├── supplychain/    # Supply chain attacks
-│   │   ├── vulnerabilities/# CVE scanning
-│   │   └── runtime/        # Runtime security
-│   ├── report/             # Report generators
-│   │   ├── json.go         # JSON reporter
-│   │   └── sarif.go        # SARIF reporter
-│   ├── models/             # Data models
-│   │   └── models.go       # Findings, scan results, etc.
-│   └── config/             # Configuration
-│       └── config.go       # App config & banner
-└── pkg/docker/             # Docker client wrapper
+│   │   ├── cis/             # CIS Benchmark implementation
+│   │   ├── secrets/         # Secrets detection
+│   │   ├── supplychain/     # Supply chain attacks
+│   │   ├── vulnerabilities/ # CVE scanning
+│   │   └── runtime/         # Runtime security
+│   ├── report/              # Report generators
+│   │   ├── json.go          # JSON reporter
+│   │   └── sarif.go         # SARIF reporter
+│   ├── models/              # Data models
+│   │   └── models.go        # Findings, scan results, etc.
+│   └── config/              # Configuration
+│       └── config.go        # App config & banner
+└── pkg/docker/              # Docker client wrapper
     └── client.go
 ```
 
