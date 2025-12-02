@@ -167,11 +167,13 @@ DockerScan v2.0 is a **complete rewrite** from the ground up. Here's what change
 
 ### New in v2.0.4
 
-- 🗄️ **CVE Database Integration** - Local SQLite database with NVD data
-- ⚡ **Parallel CVE Downloads** - 4 workers for faster database updates
-- 🔄 **Retry with Backoff** - Automatic retry for rate-limited requests
-- 📦 **`--from-file` flag** - Install CVE database from local file
+- 🗄️ **CVE Database Integration** - Local SQLite database with NVD data (2.5 years of CVEs)
+- 🔄 **Daily Auto-Updates** - GitHub Action updates the CVE database every day
+- ⚡ **Parallel CVE Downloads** - 4 workers for faster database builds (nvd2sqlite)
+- 🔁 **Retry with Backoff** - Automatic retry for rate-limited NVD API requests
+- 📦 **`--from-file` flag** - Install CVE database from local file (offline/air-gapped)
 - 🔇 **Quiet mode (`-q`)** - Suppress banner for CI/CD pipelines
+- 🧹 **Reduced false positives** - Improved secrets detection with entropy filtering
 
 ### Why the Rewrite?
 
@@ -264,17 +266,16 @@ go install github.com/cr0hn/dockerscan/v2/cmd/dockerscan@latest
 
 ## 🚀 Quick Start
 
-### First-Time Setup (Required)
+### First-Time Setup
 
-Before scanning, you need to download the CVE database:
+Before scanning, download the CVE database (updated daily, ~30MB compressed):
 
 ```bash
-# Download CVE database from GitHub (recommended)
+# Download latest CVE database from GitHub
 dockerscan update-db
-
-# Or install from a local file (for testing/offline use)
-dockerscan update-db --from-file /path/to/cve-db.sqlite
 ```
+
+> **Tip**: The database is updated daily via GitHub Actions. Run `update-db` periodically to get the latest CVE data.
 
 ### Basic Scan
 
@@ -701,17 +702,27 @@ dockerscan-v2/
 
 ### CVE Database & nvd2sqlite Tool
 
-DockerScan uses a local SQLite database for CVE lookups. The database is automatically updated via GitHub Actions every 6 hours.
+DockerScan uses a local SQLite database for CVE lookups. The database is **automatically updated daily** via GitHub Actions and hosted in the repository, so you always have access to the latest CVE data.
+
+#### Database Features
+
+- 🗄️ **Pre-built database** - Ready to use, no manual setup required
+- 🔄 **Daily updates** - GitHub Action updates the database every day at 00:00 UTC
+- 📅 **2.5 years of CVE data** - Covers CVEs from mid-2022 to present
+- ⚡ **Fast lookups** - SQLite with optimized indexes
+- 🌐 **Hosted on GitHub** - Downloaded automatically with `update-db` command
 
 #### Updating the Database
 
 ```bash
-# Download latest database from GitHub
+# Download latest database from GitHub (recommended)
 dockerscan update-db
 
-# Install from local file (for testing/air-gapped environments)
+# Install from local file (for air-gapped/offline environments)
 dockerscan update-db --from-file /path/to/cve-db.sqlite
 ```
+
+> **Note**: The first time you run `dockerscan`, it will prompt you to download the database. After that, you can update it periodically with `update-db`.
 
 #### Building the Database Manually (nvd2sqlite)
 
