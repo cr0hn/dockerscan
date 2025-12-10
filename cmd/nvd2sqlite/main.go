@@ -832,9 +832,11 @@ func updateMetadata(db *sql.DB, totalCVEs int) error {
 	}
 	defer stmt.Close()
 
+	now := time.Now().Format(time.RFC3339)
 	metadata := map[string]string{
 		"version":        "1.0",
-		"created_at":     time.Now().Format(time.RFC3339),
+		"created_at":     now,
+		"last_modified":  now, // Used by dockerscan to check database age
 		"nvd_source":     "NVD API 2.0",
 		"total_cves":     fmt.Sprintf("%d", totalCVEs),
 		"schema_version": "1",
