@@ -168,6 +168,16 @@ DockerScan v2.0 is a **complete rewrite** from the ground up. Here's what change
 - ✅ **Registry Operations** - Push, pull, delete operations (coming soon in v2.1)
 - ✅ **Network Scanning** - Docker registry discovery (coming soon in v2.1)
 
+### New in v2.0.5 🔐
+
+- 🔑 **Private Registry Authentication** - Full support for scanning images from private registries (fixes #24)
+- 🌐 **Multi-Registry Support** - Docker Hub, GHCR, ECR, GCR, ACR, GitLab, and self-hosted registries
+- 🔐 **Multiple Auth Methods** - Environment variables (CI/CD), CLI flags (testing), Docker config file (seamless)
+- 🎯 **Smart Auth Priority** - CLI flags > ENV vars > Docker config (automatic selection)
+- 📝 **Enhanced Error Messages** - Registry-specific hints (ECR token expiration, rate limits, certificates)
+- 🧪 **Comprehensive Testing** - 64 test cases, 91.2% coverage, tested with real private registry
+- 📚 **Complete Documentation** - Examples for all major cloud registries and authentication methods
+
 ### New in v2.0.4
 
 - 🗄️ **CVE Database Integration** - Local SQLite database with NVD data (2.5 years of CVEs)
