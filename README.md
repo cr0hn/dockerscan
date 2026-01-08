@@ -38,6 +38,7 @@
 - [Installation](#-installation)
 - [Quick Start](#-quick-start)
 - [Usage](#-usage)
+  - [Private Registry Authentication](#-private-registry-authentication)
 - [Security Scanners](#-security-scanners)
 - [Output Formats](#-output-formats)
 - [Use Cases](#-use-cases)
@@ -365,6 +366,17 @@ Options:
   --only-critical         Show only critical/high severity findings
   --verbose               Verbose output
 
+Authentication (for private registries):
+  --registry-user <username>       Registry username
+  --registry-password <password>   Registry password (not recommended, use env vars)
+  --registry <url>                 Registry URL (optional, auto-detected from image)
+  --docker-config <path>           Path to Docker config file (default: ~/.docker/config.json)
+
+  Environment variables (recommended for CI/CD):
+    DOCKER_USERNAME or REGISTRY_USERNAME     Registry username
+    DOCKER_PASSWORD or REGISTRY_PASSWORD     Registry password or token
+    DOCKER_REGISTRY or REGISTRY             Registry URL (optional)
+
 Exit Codes:
   0   No issues found
   1   HIGH severity issues found
@@ -388,7 +400,213 @@ dockerscan --only-critical production-app:v1.0
 
 # Verbose mode
 dockerscan --verbose ubuntu:22.04
+
+# Scan private registry images (see Authentication section below)
+dockerscan ghcr.io/myorg/private-app:v1.0
 ```
+
+### 🔐 Private Registry Authentication
+
+DockerScan supports three methods for authenticating with private registries:
+
+#### Method 1: Docker Config File (Recommended for Local Use)
+
+The most convenient method - uses your existing Docker credentials:
+
+```bash
+# First, authenticate with your registry using Docker
+docker login ghcr.io
+# Username: your-username
+# Password: ghp_your-token-here
+
+# Now DockerScan can use these credentials automatically
+dockerscan ghcr.io/myorg/private-app:latest
+```
+
+DockerScan automatically reads credentials from `~/.docker/config.json`. This works with all registries you've logged into with `docker login`.
+
+#### Method 2: Environment Variables (Recommended for CI/CD)
+
+Best for automated environments and CI/CD pipelines:
+
+```bash
+# Set environment variables
+export DOCKER_USERNAME=myusername
+export DOCKER_PASSWORD=mytoken
+
+# Scan private image
+dockerscan ghcr.io/myorg/private-app:latest
+
+# Or use alternative variable names
+export REGISTRY_USERNAME=myusername
+export REGISTRY_PASSWORD=mytoken
+dockerscan myregistry.example.com/app:v1.0
+```
+
+**CI/CD Example (GitHub Actions):**
+```yaml
+- name: Scan private image
+  env:
+    DOCKER_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+    DOCKER_PASSWORD: ${{ secrets.REGISTRY_TOKEN }}
+  run: dockerscan ghcr.io/${{ github.repository }}:${{ github.sha }}
+```
+
+#### Method 3: Command-Line Flags (Not Recommended)
+
+For quick testing only (credentials visible in process list):
+
+```bash
+dockerscan --registry-user myuser --registry-password mytoken ghcr.io/myorg/app:v1
+```
+
+**Security Warning:** This method exposes credentials in your shell history and process list. Use environment variables or Docker config instead.
+
+### Registry-Specific Examples
+
+#### Docker Hub (Private Repositories)
+
+```bash
+# Using Docker config
+docker login docker.io
+dockerscan myusername/private-repo:latest
+
+# Using environment variables
+export DOCKER_USERNAME=myusername
+export DOCKER_PASSWORD=dckr_pat_XXXXXXXXXXXXX
+dockerscan myusername/private-repo:latest
+```
+
+#### GitHub Container Registry (GHCR)
+
+```bash
+# Using Docker config
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+dockerscan ghcr.io/myorg/myapp:v1.0
+
+# Using environment variables
+export DOCKER_USERNAME=myusername
+export DOCKER_PASSWORD=ghp_XXXXXXXXXXXXXXXXXXXX
+dockerscan ghcr.io/myorg/myapp:v1.0
+```
+
+#### AWS Elastic Container Registry (ECR)
+
+```bash
+# Get login credentials from AWS
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  123456789012.dkr.ecr.us-east-1.amazonaws.com
+
+# Scan ECR image
+dockerscan 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
+
+# Or use environment variables with ECR credentials
+export DOCKER_USERNAME=AWS
+export DOCKER_PASSWORD=$(aws ecr get-login-password --region us-east-1)
+dockerscan 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
+```
+
+#### Google Container Registry (GCR) / Artifact Registry
+
+```bash
+# Authenticate with gcloud
+gcloud auth configure-docker gcr.io
+
+# Scan GCR image
+dockerscan gcr.io/my-project/myapp:latest
+
+# For Artifact Registry
+gcloud auth configure-docker us-docker.pkg.dev
+dockerscan us-docker.pkg.dev/my-project/my-repo/myapp:latest
+
+# Or use service account JSON key
+export DOCKER_USERNAME=_json_key
+export DOCKER_PASSWORD="$(cat service-account-key.json)"
+dockerscan gcr.io/my-project/myapp:latest
+```
+
+#### Azure Container Registry (ACR)
+
+```bash
+# Login with Azure CLI
+az acr login --name myregistry
+
+# Scan ACR image
+dockerscan myregistry.azurecr.io/myapp:v1.0
+
+# Or use service principal credentials
+export DOCKER_USERNAME=<service-principal-id>
+export DOCKER_PASSWORD=<service-principal-password>
+dockerscan myregistry.azurecr.io/myapp:v1.0
+```
+
+#### GitLab Container Registry
+
+```bash
+# Using Docker config
+docker login registry.gitlab.com
+dockerscan registry.gitlab.com/mygroup/myproject/myapp:latest
+
+# Using environment variables with deploy token
+export DOCKER_USERNAME=gitlab+deploy-token-1
+export DOCKER_PASSWORD=DEPLOY_TOKEN_HERE
+dockerscan registry.gitlab.com/mygroup/myproject/myapp:latest
+```
+
+#### Self-Hosted/Private Registries
+
+```bash
+# Standard authentication
+docker login myregistry.example.com:5000
+dockerscan myregistry.example.com:5000/myapp:latest
+
+# With environment variables
+export DOCKER_USERNAME=admin
+export DOCKER_PASSWORD=secret
+dockerscan myregistry.example.com:5000/myapp:latest
+
+# Insecure registries (not recommended for production)
+# Add to Docker daemon config: /etc/docker/daemon.json
+# {
+#   "insecure-registries": ["myregistry.example.com:5000"]
+# }
+```
+
+### Troubleshooting Authentication
+
+#### Common Issues
+
+**1. "authentication required" error**
+```bash
+# Make sure you're logged in
+docker login <registry>
+
+# Or set environment variables
+export DOCKER_USERNAME=your-username
+export DOCKER_PASSWORD=your-token
+```
+
+**2. "unauthorized: authentication failed" error**
+- Verify your credentials are correct
+- Check if your token has expired (especially for cloud providers)
+- Ensure your account has pull permissions for the image
+
+**3. AWS ECR "authorization token has expired"**
+```bash
+# ECR tokens expire after 12 hours - refresh them
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  123456789012.dkr.ecr.us-east-1.amazonaws.com
+```
+
+**4. Rate limiting on Docker Hub**
+- Authenticate to increase rate limits (200 pulls/6 hours for free accounts)
+- Consider using a Docker Hub Pro account for higher limits
+
+**5. Certificate errors with self-signed certificates**
+- Add the CA certificate to your system trust store
+- Or configure Docker to trust the registry (see Docker documentation)
 
 ---
 

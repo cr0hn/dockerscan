@@ -1,0 +1,7 @@
+{
+  "auths": {
+    "ghcr.io": {
+      "auth": "invalid json
+    }
+  }
+}

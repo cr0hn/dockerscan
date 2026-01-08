@@ -1,0 +1,15 @@
+{
+  "auths": {
+    "https://index.docker.io/v1/": {
+      "auth": "dXNlcjE6cGFzczE="
+    },
+    "ghcr.io": {
+      "auth": "dXNlcjI6cGFzczI="
+    },
+    "myregistry.example.com": {
+      "username": "user3",
+      "password": "pass3",
+      "email": "user3@example.com"
+    }
+  }
+}

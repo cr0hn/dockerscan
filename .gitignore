@@ -13,8 +13,13 @@ bin/
 *.out
 coverage.out
 coverage.html
-*.json
+*-report.json
+dockerscan-report.json
 *.sarif
+
+# Testdata exceptions (needed for tests)
+!pkg/auth/testdata/*.json
+!**/testdata/*.json
 
 # Go workspace file
 go.work
@@ -29,3 +34,9 @@ go.work
 # OS
 .DS_Store
 Thumbs.db
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+CLAUDE.md
+me.png

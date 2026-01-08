@@ -18,6 +18,7 @@ import (
 	"github.com/cr0hn/dockerscan/v2/internal/scanner/secrets"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner/supplychain"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner/vulnerabilities"
+	"github.com/cr0hn/dockerscan/v2/pkg/auth"
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/tw"
@@ -93,6 +94,31 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Parse authentication flags
+	registryUser := getFlagValue("--registry-user")
+	registryPassword := getFlagValue("--registry-password")
+	registryURL := getFlagValue("--registry")
+	dockerConfigPath := getFlagValue("--docker-config")
+
+	// Show security warning if password provided via CLI
+	if registryPassword != "" && !quietMode {
+		fmt.Fprintf(os.Stderr, "\n⚠️  Security Warning: Providing passwords via command-line flags is not recommended.\n")
+		fmt.Fprintf(os.Stderr, "   Prefer using environment variables or ~/.docker/config.json instead.\n\n")
+	}
+
+	// Create authentication config
+	// Note: --docker-config flag is not fully implemented yet, will use default ~/.docker/config.json
+	if dockerConfigPath != "" && !quietMode {
+		fmt.Fprintf(os.Stderr, "⚠️  Warning: --docker-config flag is not yet fully implemented. Using default ~/.docker/config.json\n\n")
+	}
+
+	// Load authentication from all sources (CLI, env, Docker config)
+	authConfig, err := auth.NewAuthConfig(registryUser, registryPassword, registryURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error setting up authentication: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Create Docker client
 	dockerClient, err := docker.NewClient()
 	if err != nil {
@@ -122,10 +148,17 @@ func main() {
 
 	if !exists {
 		fmt.Printf("   Image not found locally. Pulling from registry...\n")
-		if err := dockerClient.PullImage(ctx, imageName); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Image '%s' not found locally and could not be pulled from registry.\n", imageName)
-			fmt.Fprintf(os.Stderr, "       Please check the image name and try again.\n")
-			fmt.Fprintf(os.Stderr, "       Details: %v\n", err)
+
+		// Get registry authentication for this specific image
+		registryAuth, err := authConfig.GetRegistryAuth(imageName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting registry authentication: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Pull image with authentication
+		if err := dockerClient.PullImage(ctx, imageName, registryAuth); err != nil {
+			fmt.Fprintf(os.Stderr, "\n%v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("   Image pulled successfully.\n")
@@ -494,10 +527,42 @@ func getCommand() string {
 // getImageName returns the image name from args (first non-flag, non-command arg)
 func getImageName() string {
 	commands := map[string]bool{"scan": true, "update-db": true, "help": true, "version": true}
+	flagsWithValues := map[string]bool{
+		"--scanners": true,
+		"--output": true,
+		"--registry-user": true,
+		"--registry-password": true,
+		"--registry": true,
+		"--docker-config": true,
+		"--from-file": true,
+	}
+
+	skipNext := false
 	for _, arg := range os.Args[1:] {
-		if !strings.HasPrefix(arg, "-") && !commands[arg] {
-			return arg
+		// Skip flag values
+		if skipNext {
+			skipNext = false
+			continue
 		}
+
+		// Check if this is a flag that takes a value
+		if flagsWithValues[arg] {
+			skipNext = true
+			continue
+		}
+
+		// Skip any other flags
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+
+		// Skip known commands
+		if commands[arg] {
+			continue
+		}
+
+		// This must be the image name
+		return arg
 	}
 	return ""
 }
@@ -535,6 +600,17 @@ Options:
   --only-critical     Show only CRITICAL severity findings
   --verbose           Enable verbose output
 
+Authentication (for private registries):
+  --registry-user <username>       Registry username
+  --registry-password <password>   Registry password (not recommended, use env vars)
+  --registry <url>                 Registry URL (optional, auto-detected from image)
+  --docker-config <path>           Path to Docker config file (default: ~/.docker/config.json)
+
+  Environment variables (recommended for CI/CD):
+    DOCKER_USERNAME or REGISTRY_USERNAME     Registry username
+    DOCKER_PASSWORD or REGISTRY_PASSWORD     Registry password or token
+    DOCKER_REGISTRY or REGISTRY             Registry URL (optional)
+
 Exit Codes:
   0   No issues found
   1   HIGH severity issues found
@@ -566,10 +642,28 @@ EXAMPLES
     $ dockerscan myapp:$CI_COMMIT_SHA
     $ if [ $? -eq 2 ]; then echo "Critical vulnerabilities!"; exit 1; fi
 
-  Scan local/private images:
+  Scan local images:
   ─────────────────────────────────────────────
     $ docker build -t myapp:test .
     $ dockerscan myapp:test
+
+  Scan private registry images:
+  ─────────────────────────────────────────────
+    # Using CLI flags (not recommended for production)
+    $ dockerscan --registry-user myuser --registry-password mypass ghcr.io/org/app:v1
+
+    # Using environment variables (recommended for CI/CD)
+    $ export DOCKER_USERNAME=myuser
+    $ export DOCKER_PASSWORD=ghp_token123
+    $ dockerscan ghcr.io/org/private:latest
+
+    # Using Docker config file (recommended for local use)
+    $ docker login ghcr.io
+    $ dockerscan ghcr.io/org/private:latest
+
+    # AWS ECR example
+    $ aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
+    $ dockerscan 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
 
   Scan and use SARIF report (GitHub Security):
   ─────────────────────────────────────────────

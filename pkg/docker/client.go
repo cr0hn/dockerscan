@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
+	"github.com/cr0hn/dockerscan/v2/pkg/auth"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
@@ -61,17 +63,79 @@ func (c *Client) ImageExists(ctx context.Context, imageName string) (bool, error
 	return true, nil
 }
 
-// PullImage pulls an image from registry
-func (c *Client) PullImage(ctx context.Context, imageName string) error {
-	reader, err := c.cli.ImagePull(ctx, imageName, image.PullOptions{})
+// PullImage pulls an image from registry with optional authentication
+func (c *Client) PullImage(ctx context.Context, imageName string, authConfig *auth.RegistryAuth) error {
+	pullOptions := image.PullOptions{}
+
+	// Encode authentication if provided
+	if authConfig != nil {
+		dockerAuth := authConfig.ToDockerAuthConfig()
+		authJSON, err := json.Marshal(dockerAuth)
+		if err != nil {
+			return fmt.Errorf("failed to encode authentication: %w", err)
+		}
+		pullOptions.RegistryAuth = base64.URLEncoding.EncodeToString(authJSON)
+	}
+
+	reader, err := c.cli.ImagePull(ctx, imageName, pullOptions)
 	if err != nil {
-		return fmt.Errorf("failed to pull image: %w", err)
+		return c.enhanceAuthError(err, imageName, authConfig)
 	}
 	defer reader.Close()
 
 	// Read and discard the output (we could parse progress here)
 	_, err = io.Copy(io.Discard, reader)
-	return err
+	if err != nil {
+		return c.enhanceAuthError(err, imageName, authConfig)
+	}
+
+	return nil
+}
+
+// enhanceAuthError provides helpful error messages for authentication failures
+func (c *Client) enhanceAuthError(err error, imageName string, authConfig *auth.RegistryAuth) error {
+	if err == nil {
+		return nil
+	}
+
+	errMsg := err.Error()
+	registry, _ := auth.ExtractRegistry(imageName)
+
+	// Detect authentication failures
+	if strings.Contains(errMsg, "unauthorized") || strings.Contains(errMsg, "authentication required") {
+		if authConfig == nil {
+			return fmt.Errorf("authentication required for %s: %w\n\nHint: Provide credentials via:\n  --registry-user and --registry-password flags\n  or DOCKER_USERNAME/DOCKER_PASSWORD environment variables\n  or ~/.docker/config.json", imageName, err)
+		}
+		return fmt.Errorf("authentication failed for %s: %w\n\nHint: Verify your credentials are correct", imageName, err)
+	}
+
+	// Detect rate limiting (common on Docker Hub)
+	if strings.Contains(errMsg, "rate limit") || strings.Contains(errMsg, "too many requests") {
+		return fmt.Errorf("rate limit exceeded for %s: %w\n\nHint: Authenticate to increase rate limits or wait before retrying", imageName, err)
+	}
+
+	// Detect AWS ECR specific errors
+	if strings.Contains(registry, ".ecr.") && strings.Contains(registry, ".amazonaws.com") {
+		if strings.Contains(errMsg, "authorization token has expired") {
+			return fmt.Errorf("AWS ECR token expired: %w\n\nHint: Run 'aws ecr get-login-password' to refresh your token", err)
+		}
+		if strings.Contains(errMsg, "no basic auth credentials") {
+			return fmt.Errorf("AWS ECR authentication required: %w\n\nHint: Use 'aws ecr get-login-password --region REGION | docker login --username AWS --password-stdin REGISTRY'", err)
+		}
+	}
+
+	// Detect certificate errors
+	if strings.Contains(errMsg, "certificate") || strings.Contains(errMsg, "x509") {
+		return fmt.Errorf("TLS certificate error for %s: %w\n\nHint: The registry may be using self-signed certificates. Add the CA to your system trust store or use Docker's insecure-registries option", imageName, err)
+	}
+
+	// Detect network errors
+	if strings.Contains(errMsg, "connection refused") || strings.Contains(errMsg, "no such host") {
+		return fmt.Errorf("network error connecting to registry: %w\n\nHint: Check that the registry URL is correct and accessible", err)
+	}
+
+	// Return original error with context
+	return fmt.Errorf("failed to pull image %s: %w", imageName, err)
 }
 
 // ImageInfo contains detailed information about a Docker image
