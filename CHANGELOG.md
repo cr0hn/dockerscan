@@ -5,6 +5,14 @@ Most recent changes appear first.
 
 ---
 
+## [2026-06-11] - Unit tests for runtime and supplychain scanners
+
+### Added
+- `internal/scanner/runtime/runtime_test.go`: table-driven unit tests for all internal check methods of `RuntimeScanner` (privileged mode, capabilities, seccomp, AppArmor, namespaces, read-only rootfs, sensitive mounts, user config) — 30 test cases, no Docker daemon required
+- `internal/scanner/supplychain/supplychain_test.go`: table-driven unit tests for all detection logic in `SupplyChainScanner` (miner regex patterns, miner binary filenames, CVE-2024-3094 backdoor library version matching, phishing patterns, suspicious connection patterns, imageless container layer logic) — 37 test cases, no Docker daemon required
+
+---
+
 ## [2026-06-11] - Docker credential helpers support
 
 ### Added
