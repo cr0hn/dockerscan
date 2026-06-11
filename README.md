@@ -374,7 +374,8 @@ Options:
                           Options: cis,secrets,supplychain,vulnerabilities,runtime
   --output DIR            Output directory for reports (default: .)
   --only-critical         Show only critical/high severity findings
-  --verbose               Verbose output
+  --verbose, -v           Show scan progress (scanner names, findings count, image pull status). Output to stderr.
+  --debug                 Show verbose output plus internal errors and technical details. Output to stderr.
 
 Authentication (for private registries):
   --registry-user <username>       Registry username
@@ -408,8 +409,11 @@ dockerscan --output /var/reports postgres:14
 # Only show critical issues
 dockerscan --only-critical production-app:v1.0
 
-# Verbose mode
+# Ver progreso del scan (scanner names, findings count, image pull status)
 dockerscan --verbose ubuntu:22.04
+
+# Debug detallado (errores internos, detalles técnicos)
+dockerscan --debug ubuntu:22.04
 
 # Scan private registry images (see Authentication section below)
 dockerscan ghcr.io/myorg/private-app:v1.0
@@ -434,6 +438,22 @@ dockerscan ghcr.io/myorg/private-app:latest
 ```
 
 DockerScan automatically reads credentials from `~/.docker/config.json`. This works with all registries you've logged into with `docker login`.
+
+**Credential helpers are fully supported.** DockerScan natively resolves credentials through:
+
+- **`credsStore`** — global credential helper (e.g. `osxkeychain` on macOS with Docker Desktop, `wincred` on Windows, `pass` on Linux)
+- **`credHelpers`** — per-registry credential helpers (takes precedence over `credsStore`)
+- **Automatic fallback** — if the specified helper binary is not installed, DockerScan falls back to the plaintext `auths` block in `config.json`
+
+On **macOS with Docker Desktop**, this works out of the box with no extra configuration:
+
+```json
+{
+  "credsStore": "osxkeychain"
+}
+```
+
+DockerScan will call `docker-credential-osxkeychain` transparently to retrieve tokens, so you never need to pass credentials explicitly.
 
 #### Method 2: Environment Variables (Recommended for CI/CD)
 
