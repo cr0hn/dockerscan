@@ -6,6 +6,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/distribution/reference v0.6.0
 	github.com/docker/docker v28.5.2+incompatible
+	github.com/docker/docker-credential-helpers v0.9.8
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/moby/go-archive v0.1.0
 	github.com/olekukonko/tablewriter v1.1.1

@@ -5,6 +5,22 @@ Most recent changes appear first.
 
 ---
 
+## [2026-06-11] - Docker credential helpers support
+
+### Added
+- `pkg/auth/auth.go`: full support for Docker credential helpers (`credHelpers` per-registry and `credsStore` global) via `github.com/docker/docker-credential-helpers`
+- Helpers are resolved before the plain `auths` section, matching Docker CLI priority order
+- Docker Hub URLs normalized to `https://index.docker.io/v1/` as required by helpers
+- 5-second timeout per helper call to prevent process hangs
+- Input validation: `credStoreName` must match `[a-zA-Z0-9_-]+` (path traversal protection)
+- Silent fallback to `auths` when helper binary is not installed
+
+### Fixed
+- `pkg/auth/auth.go`: warning "credential helper not supported yet" replaced by actual support
+- `pkg/auth/auth.go`: `credHelpers` map lookup now tries Docker Hub aliases (`docker.io`, `registry-1.docker.io`) in addition to normalized name
+
+---
+
 ## [2026-06-11] - verbose and debug flags
 
 ### Added
