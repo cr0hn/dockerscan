@@ -543,6 +543,252 @@ func TestNewAuthConfig(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// isValidCredStoreName
+// ---------------------------------------------------------------------------
+
+func TestIsValidCredStoreName(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "empty string", input: "", want: false},
+		{name: "osxkeychain", input: "osxkeychain", want: true},
+		{name: "desktop", input: "desktop", want: true},
+		{name: "alphanumeric with hyphen and underscore", input: "my-helper_2", want: true},
+		{name: "path traversal dots-slash", input: "../../tmp/evil", want: false},
+		{name: "space in name", input: "hello world", want: false},
+		{name: "semicolon injection", input: "helper;evil", want: false},
+		{name: "uppercase and digits", input: "UPPER123", want: true},
+		// hyphens and underscores are allowed chars; a non-empty string of them is valid
+		{name: "only hyphens and underscores", input: "-_-", want: true},
+		{name: "single letter", input: "a", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isValidCredStoreName(tt.input)
+			if got != tt.want {
+				t.Errorf("isValidCredStoreName(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// helperServerURL
+// ---------------------------------------------------------------------------
+
+func TestHelperServerURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		registry string
+		want     string
+	}{
+		{
+			name:     "index.docker.io returns canonical Docker Hub URL",
+			registry: "index.docker.io",
+			want:     "https://index.docker.io/v1/",
+		},
+		{
+			name:     "docker.io alias returns canonical Docker Hub URL",
+			registry: "docker.io",
+			want:     "https://index.docker.io/v1/",
+		},
+		{
+			name:     "registry-1.docker.io alias returns canonical Docker Hub URL",
+			registry: "registry-1.docker.io",
+			want:     "https://index.docker.io/v1/",
+		},
+		{
+			name:     "ghcr.io is returned unchanged",
+			registry: "ghcr.io",
+			want:     "ghcr.io",
+		},
+		{
+			name:     "private registry with port is returned unchanged",
+			registry: "myregistry.example.com:5000",
+			want:     "myregistry.example.com:5000",
+		},
+		{
+			name:     "gcr.io is returned unchanged",
+			registry: "gcr.io",
+			want:     "gcr.io",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := helperServerURL(tt.registry)
+			if got != tt.want {
+				t.Errorf("helperServerURL(%q) = %q, want %q", tt.registry, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// getFromDockerConfig — priority A → B → C fallback logic
+// ---------------------------------------------------------------------------
+
+func TestGetFromDockerConfig_Priority(t *testing.T) {
+	// A nonexistent helper binary name that will never be found in PATH.
+	const missingHelper = "docker-credential-nonexistent-xxxyyy"
+	const missingHelperName = "nonexistent-xxxyyy"
+
+	_ = missingHelper // referenced only for documentation clarity
+
+	tests := []struct {
+		name        string
+		dockerCfg   *DockerConfig
+		registry    string
+		wantNil     bool
+		wantErr     bool
+		wantUser    string
+		wantPass    string
+	}{
+		{
+			name: "credHelpers entry with absent binary falls back to auths",
+			dockerCfg: &DockerConfig{
+				CredHelpers: map[string]string{
+					"ghcr.io": missingHelperName,
+				},
+				Auths: map[string]AuthEntry{
+					"ghcr.io": {Username: "authuser", Password: "authpass"},
+				},
+			},
+			registry: "ghcr.io",
+			wantNil:  false,
+			wantUser: "authuser",
+			wantPass: "authpass",
+		},
+		{
+			name: "credStore with absent binary falls back to auths",
+			dockerCfg: &DockerConfig{
+				CredStore: missingHelperName,
+				Auths: map[string]AuthEntry{
+					"ghcr.io": {Username: "storeuser", Password: "storepass"},
+				},
+			},
+			registry: "ghcr.io",
+			wantNil:  false,
+			wantUser: "storeuser",
+			wantPass: "storepass",
+		},
+		{
+			name: "both helpers absent and auths empty returns nil",
+			dockerCfg: &DockerConfig{
+				CredHelpers: map[string]string{
+					"ghcr.io": missingHelperName,
+				},
+				CredStore: missingHelperName,
+				Auths:     map[string]AuthEntry{},
+			},
+			registry: "ghcr.io",
+			wantNil:  true,
+		},
+		{
+			name: "nil dockerConfig returns nil without error",
+			dockerCfg: nil,
+			registry:  "ghcr.io",
+			wantNil:   true,
+		},
+		{
+			name: "no helpers configured uses auths directly",
+			dockerCfg: &DockerConfig{
+				Auths: map[string]AuthEntry{
+					"myregistry.example.com": {Username: "u", Password: "p"},
+				},
+			},
+			registry: "myregistry.example.com",
+			wantNil:  false,
+			wantUser: "u",
+			wantPass: "p",
+		},
+		{
+			name: "all sources empty returns nil",
+			dockerCfg: &DockerConfig{
+				Auths: map[string]AuthEntry{},
+			},
+			registry: "unknown.registry.io",
+			wantNil:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ac := &AuthConfig{
+				dockerConfig: tt.dockerCfg,
+			}
+
+			auth, err := ac.getFromDockerConfig(nil, tt.registry) //nolint:staticcheck
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("getFromDockerConfig() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if (auth == nil) != tt.wantNil {
+				t.Fatalf("getFromDockerConfig() auth == nil is %v, want %v", auth == nil, tt.wantNil)
+			}
+			if !tt.wantNil && auth != nil {
+				if auth.Username != tt.wantUser {
+					t.Errorf("Username = %q, want %q", auth.Username, tt.wantUser)
+				}
+				if auth.Password != tt.wantPass {
+					t.Errorf("Password = %q, want %q", auth.Password, tt.wantPass)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// getFromCredHelper — input validation
+// ---------------------------------------------------------------------------
+
+func TestGetFromCredHelper_Validation(t *testing.T) {
+	tests := []struct {
+		name           string
+		credStoreName  string
+		wantNil        bool
+		wantErr        bool
+	}{
+		{
+			name:          "path traversal rejected with error",
+			credStoreName: "../../evil",
+			wantNil:       true,
+			wantErr:       true,
+		},
+		{
+			name:          "empty name rejected with error",
+			credStoreName: "",
+			wantNil:       true,
+			wantErr:       true,
+		},
+		{
+			name:          "binary not in PATH returns nil nil (silent fallback)",
+			credStoreName: "nonexistent-helper-xxxyyy",
+			wantNil:       true,
+			wantErr:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth, err := getFromCredHelper(nil, tt.credStoreName, "ghcr.io", "ghcr.io") //nolint:staticcheck
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("getFromCredHelper() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if (auth == nil) != tt.wantNil {
+				t.Errorf("getFromCredHelper() auth == nil is %v, want %v", auth == nil, tt.wantNil)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestToDockerAuthConfig (pre-existing — kept below)
+// ---------------------------------------------------------------------------
+
 func TestToDockerAuthConfig(t *testing.T) {
 	tests := []struct {
 		name string
