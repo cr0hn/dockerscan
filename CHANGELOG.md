@@ -5,6 +5,27 @@ Most recent changes appear first.
 
 ---
 
+## [2026-06-11] - verbose and debug flags
+
+### Added
+- `internal/logger/logger.go`: new lightweight logger package with `Verbose()` and `Debug()` functions writing to stderr
+- `--verbose` / `-v` flag: shows scan progress (which scanner is running, findings count per scanner, image pull status)
+- `--debug` flag: includes everything in verbose mode plus previously-silenced internal errors
+
+### Changed
+- `cmd/dockerscan/main.go`: parse `--verbose`/`-v` and `--debug` flags; initialise logger globals; emit verbose messages around image pull and scan lifecycle; updated help text
+- `internal/scanner/scanner.go`: emit `logger.Verbose` before/after each scanner run; emit `logger.Debug` when a scanner returns an error (was silently dropped)
+- `internal/scanner/cis/cis.go`: `logger.Debug` when `GetImageHistory` or `VerifyImageSignature` fail (were silenced)
+- `internal/scanner/supplychain/supplychain.go`: `logger.Debug` for each of the six non-fatal sub-check errors (were silenced with comments only)
+- `internal/scanner/runtime/runtime.go`: `logger.Debug` when `scanContainer` fails for a container (was silenced)
+
+### Notes
+- Without any flags, behaviour is identical to previous versions (no output change)
+- `--debug` implicitly activates verbose output
+- All verbose/debug messages go to **stderr** to avoid polluting stdout/JSON pipelines
+
+---
+
 ## [Unreleased] - 2026-06-11
 
 ### Changed

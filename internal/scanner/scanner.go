@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cr0hn/dockerscan/v2/internal/logger"
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 )
 
@@ -65,16 +66,20 @@ func (r *Registry) ScanAll(ctx context.Context, target models.ScanTarget) ([]mod
 
 	for _, scanner := range r.scanners {
 		if !scanner.Enabled() {
+			logger.Verbose("Skipping disabled scanner: %s", scanner.Name())
 			continue
 		}
 
+		logger.Verbose("🔍 Running scanner: %s...", scanner.Name())
 		findings, err := scanner.Scan(ctx, target)
 		if err != nil {
 			// Log error but continue with other scanners
+			logger.Debug("scanner %s failed: %v", scanner.Name(), err)
 			stats[scanner.Name()+"_errors"] = 1
 			continue
 		}
 
+		logger.Verbose("✅ %s: %d finding(s)", scanner.Name(), len(findings))
 		allFindings = append(allFindings, findings...)
 		stats[scanner.Name()] = len(findings)
 	}

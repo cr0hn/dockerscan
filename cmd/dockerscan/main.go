@@ -10,6 +10,7 @@ import (
 
 	"github.com/cr0hn/dockerscan/v2/internal/config"
 	"github.com/cr0hn/dockerscan/v2/internal/cvedb"
+	"github.com/cr0hn/dockerscan/v2/internal/logger"
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 	"github.com/cr0hn/dockerscan/v2/internal/report"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner"
@@ -29,6 +30,8 @@ const (
 )
 
 var quietMode bool
+var verboseMode bool
+var debugMode bool
 
 func main() {
 	// Check for quiet mode first (before printing banner)
@@ -43,10 +46,26 @@ func main() {
 		return
 	}
 
-	if hasFlag("-v") || hasFlag("--version") || hasFlag("version") {
+	// --version must be checked before --verbose so "-v" is not ambiguous.
+	// We only treat "-v" as version if no "--verbose" is present.
+	isVerboseFlag := hasFlag("--verbose") || hasFlag("-v")
+	isVersionFlag := hasFlag("--version") || hasFlag("version")
+	if isVersionFlag && !isVerboseFlag {
 		fmt.Printf("dockerscan %s\n", config.Version)
 		return
 	}
+	if hasFlag("--version") || hasFlag("version") {
+		fmt.Printf("dockerscan %s\n", config.Version)
+		return
+	}
+
+	// Parse verbose/debug flags
+	verboseMode = hasFlag("--verbose") || hasFlag("-v")
+	debugMode = hasFlag("--debug")
+
+	// Initialise logger so all packages can use it immediately
+	logger.VerboseEnabled = verboseMode
+	logger.DebugEnabled = debugMode
 
 	// Print banner unless quiet mode
 	if !quietMode {
@@ -138,8 +157,10 @@ func main() {
 	registry.Register(runtime.NewRuntimeScanner(dockerClient))
 
 	fmt.Printf("\n🔍 Scanning image: %s\n", imageName)
+	logger.Verbose("Target image: %s", imageName)
 
 	// Check if image exists locally
+	logger.Debug("Checking if image exists locally: %s", imageName)
 	exists, err := dockerClient.ImageExists(ctx, imageName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error checking image: %v\n", err)
@@ -148,6 +169,7 @@ func main() {
 
 	if !exists {
 		fmt.Printf("   Image not found locally. Pulling from registry...\n")
+		logger.Verbose("📦 Pulling image %s...", imageName)
 
 		// Get registry authentication for this specific image
 		registryAuth, err := authConfig.GetRegistryAuth(imageName)
@@ -162,6 +184,9 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("   Image pulled successfully.\n")
+		logger.Verbose("📦 Image %s pulled successfully", imageName)
+	} else {
+		logger.Verbose("Image %s found locally, skipping pull", imageName)
 	}
 
 	fmt.Println()
@@ -172,6 +197,7 @@ func main() {
 	}
 
 	// Run all scanners
+	logger.Verbose("Starting scan with %d registered scanners", len(registry.List()))
 	startTime := time.Now()
 	findings, stats, err := registry.ScanAll(ctx, target)
 	endTime := time.Now()
@@ -179,6 +205,11 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error during scan: %v\n", err)
 		os.Exit(1)
+	}
+
+	logger.Verbose("Scan completed in %s — %d total finding(s)", endTime.Sub(startTime), len(findings))
+	for scannerName, count := range stats {
+		logger.Verbose("  ✅ %s: %d finding(s)", scannerName, count)
 	}
 
 	// Build scan result
@@ -594,11 +625,12 @@ Commands:
 
 Options:
   -q, --quiet         Suppress banner output (quiet mode)
+  -v, --verbose       Show scan progress (which scanner is running, findings per scanner)
+  --debug             Show verbose output plus silenced internal errors (developer mode)
   --scanners <list>   Comma-separated list of scanners to run
                       Available: cis, secrets, supplychain, vulnerabilities, runtime
   --output <dir>      Output directory for reports (default: current directory)
   --only-critical     Show only CRITICAL severity findings
-  --verbose           Enable verbose output
 
 Authentication (for private registries):
   --registry-user <username>       Registry username

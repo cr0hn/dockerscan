@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/cr0hn/dockerscan/v2/internal/logger"
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner"
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
@@ -37,15 +38,18 @@ func (s *SupplyChainScanner) Scan(ctx context.Context, target models.ScanTarget)
 
 	// Based on 2024 research: 4M+ malicious imageless containers found
 	imagelessFindings, err := s.detectImagelessContainers(ctx, target)
-	if err == nil {
+	if err != nil {
+		// Non-fatal, continue even if imageless detection fails
+		logger.Debug("supply-chain: detectImagelessContainers failed for %s: %v", target.ImageName, err)
+	} else {
 		findings = append(findings, imagelessFindings...)
 	}
-	// Non-fatal, continue even if imageless detection fails
 
 	// Detect cryptocurrency miners (120K+ pulls in 2024)
 	minerFindings, err := s.detectCryptoMiners(ctx, target)
 	if err != nil {
 		// Non-fatal, log and continue
+		logger.Debug("supply-chain: detectCryptoMiners failed for %s: %v", target.ImageName, err)
 		minerFindings = []models.Finding{}
 	}
 	findings = append(findings, minerFindings...)
@@ -54,6 +58,7 @@ func (s *SupplyChainScanner) Scan(ctx context.Context, target models.ScanTarget)
 	backdoorFindings, err := s.detectBackdoorLibraries(ctx, target)
 	if err != nil {
 		// Non-fatal, continue
+		logger.Debug("supply-chain: detectBackdoorLibraries failed for %s: %v", target.ImageName, err)
 		backdoorFindings = []models.Finding{}
 	}
 	findings = append(findings, backdoorFindings...)
@@ -62,6 +67,7 @@ func (s *SupplyChainScanner) Scan(ctx context.Context, target models.ScanTarget)
 	signatureFindings, err := s.verifyImageSignature(ctx, target)
 	if err != nil {
 		// Non-fatal, continue
+		logger.Debug("supply-chain: verifyImageSignature failed for %s: %v", target.ImageName, err)
 		signatureFindings = []models.Finding{}
 	}
 	findings = append(findings, signatureFindings...)
@@ -70,6 +76,7 @@ func (s *SupplyChainScanner) Scan(ctx context.Context, target models.ScanTarget)
 	connectionFindings, err := s.detectSuspiciousConnections(ctx, target)
 	if err != nil {
 		// Non-fatal, continue
+		logger.Debug("supply-chain: detectSuspiciousConnections failed for %s: %v", target.ImageName, err)
 		connectionFindings = []models.Finding{}
 	}
 	findings = append(findings, connectionFindings...)
@@ -78,6 +85,7 @@ func (s *SupplyChainScanner) Scan(ctx context.Context, target models.ScanTarget)
 	phishingFindings, err := s.scanPhishingContent(ctx, target)
 	if err != nil {
 		// Non-fatal, continue
+		logger.Debug("supply-chain: scanPhishingContent failed for %s: %v", target.ImageName, err)
 		phishingFindings = []models.Finding{}
 	}
 	findings = append(findings, phishingFindings...)

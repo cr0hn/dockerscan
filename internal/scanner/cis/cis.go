@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cr0hn/dockerscan/v2/internal/logger"
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner"
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
@@ -52,6 +53,7 @@ func (s *CISScanner) Scan(ctx context.Context, target models.ScanTarget) ([]mode
 	history, err := s.dockerClient.GetImageHistory(ctx, target.ImageName)
 	if err != nil {
 		// Non-fatal, continue without history
+		logger.Debug("cis-benchmark: failed to get image history for %s: %v", target.ImageName, err)
 		history = nil
 	}
 
@@ -265,6 +267,7 @@ func (s *CISScanner) checkContentTrust(ctx context.Context, imageName string, in
 	signed, _, err := s.dockerClient.VerifyImageSignature(ctx, imageName)
 	if err != nil {
 		// Non-fatal, continue
+		logger.Debug("cis-benchmark: failed to verify image signature for %s: %v", imageName, err)
 		return findings
 	}
 

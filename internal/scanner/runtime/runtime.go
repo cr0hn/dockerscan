@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cr0hn/dockerscan/v2/internal/logger"
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner"
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
@@ -88,6 +89,7 @@ func (s *RuntimeScanner) Scan(ctx context.Context, target models.ScanTarget) ([]
 		containerFindings, err := s.scanContainer(ctx, containerID)
 		if err != nil {
 			// Log error but continue with other containers
+			logger.Debug("runtime-security: failed to scan container %s: %v", containerID, err)
 			findings = append(findings, models.Finding{
 				ID:          "RUNTIME-ERROR-001",
 				Title:       fmt.Sprintf("Failed to scan container %s", containerID[:12]),
