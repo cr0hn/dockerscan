@@ -5,6 +5,15 @@ Most recent changes appear first.
 
 ---
 
+## [2026-06-24] - Fix CVE database update workflow
+
+### Fixed
+- `.github/workflows/update-cve-db.yml`: retry NVD download up to 3 times (2 min delay) to handle transient 503/timeout failures (root cause of failures on 2026-06-18 and 2026-06-21)
+- `.github/workflows/update-cve-db.yml`: added `issues: write` permission to `notify-on-failure` job (was getting HTTP 403 on every failure notification attempt)
+- Created repo labels `cve-update-failure` and `automated` (were missing, causing issue creation to fail with 422)
+
+---
+
 ## [2026-06-11] - Unit tests for runtime and supplychain scanners
 
 ### Added
