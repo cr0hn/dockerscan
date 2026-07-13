@@ -46,6 +46,9 @@
 - [License](#license)
 - [Author](#author)
 
+> [!WARNING]
+> **Versions 2.0.6 and earlier silently report zero package CVEs.** A query bug made the package vulnerability check fail on every scan and discard the error, so older binaries always show 0 package CVE findings regardless of the image or the database. Upgrading to **v2.1.0 or later** is strongly recommended — it is the first version where package CVE detection actually works.
+
 ## Overview
 
 **DockerScan v2** is a next-generation security scanner for Docker containers and images, completely rewritten in Go. It combines multiple security scanning techniques based on the latest 2024-2025 research, industry standards (CIS Benchmark, NIST SP 800-190), and real-world attack patterns discovered in production environments.
