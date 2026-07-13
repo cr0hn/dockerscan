@@ -24,8 +24,8 @@ const (
 	defaultRateLimit = 5   // Requests per 30 seconds without API key
 	resultsPerPage   = 2000
 	numDownloaders   = 4   // Number of parallel download workers
-	maxRetries       = 5   // Max retries for rate-limited requests
-	baseBackoff      = 30 * time.Second // Base backoff for 429 errors
+	maxRetries       = 5   // Max retries per request (429, 5xx, timeouts)
+	baseBackoff      = 30 * time.Second // Base backoff between retries
 )
 
 // Command-line flags
@@ -215,11 +215,6 @@ func main() {
 	// Get API key from env if not provided
 	if *apiKey == "" {
 		*apiKey = os.Getenv("NVD_API_KEY")
-	}
-
-	// Adjust rate limit based on API key
-	if *apiKey != "" && *rateLimit == defaultRateLimit {
-		*rateLimit = 50 // Higher limit with API key
 	}
 
 	// Parse dates
@@ -587,61 +582,66 @@ func buildNVDURL(start, end time.Time, startIndex int) string {
 	startStr := start.Format("2006-01-02T15:04:05.000Z")
 	endStr := end.Format("2006-01-02T15:04:05.000Z")
 
-	url := fmt.Sprintf("%s?pubStartDate=%s&pubEndDate=%s&resultsPerPage=%d&startIndex=%d",
+	return fmt.Sprintf("%s?pubStartDate=%s&pubEndDate=%s&resultsPerPage=%d&startIndex=%d",
 		nvdBaseURL, startStr, endStr, resultsPerPage, startIndex)
-
-	if *apiKey != "" {
-		url += "&apiKey=" + *apiKey
-	}
-
-	return url
 }
 
 func queryNVD(url string) (*NVDResponse, error) {
-	client := &http.Client{Timeout: 60 * time.Second}
+	// NVD is frequently slow (>60s to serve a page) during peak hours
+	client := &http.Client{Timeout: 300 * time.Second}
 
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := baseBackoff * time.Duration(1<<(attempt-1)) // Exponential backoff
+			if *verbose {
+				fmt.Printf("    ⚠️  %v, waiting %v before retry %d/%d...\n",
+					lastErr, backoff, attempt+1, maxRetries)
+			}
+			time.Sleep(backoff)
+		}
+
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return nil, err
 		}
 
 		req.Header.Set("User-Agent", "dockerscan-nvd2sqlite/2.0")
+		if *apiKey != "" {
+			// NVD API 2.0 expects the key in the "apiKey" header, not the URL
+			req.Header.Set("apiKey", *apiKey)
+		}
 
 		resp, err := client.Do(req)
 		if err != nil {
+			// Network error or timeout: retryable
 			lastErr = err
 			continue
 		}
 
-		// Handle rate limiting (429)
-		if resp.StatusCode == http.StatusTooManyRequests {
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var nvdResp NVDResponse
+			err := json.NewDecoder(resp.Body).Decode(&nvdResp)
 			resp.Body.Close()
-			backoff := baseBackoff * time.Duration(1<<attempt) // Exponential backoff
-			if *verbose {
-				fmt.Printf("    ⚠️  Rate limited (429), waiting %v before retry %d/%d...\n",
-					backoff, attempt+1, maxRetries)
+			if err != nil {
+				// Timeout/truncation while reading body: retryable
+				lastErr = fmt.Errorf("read body: %w", err)
+				continue
 			}
-			time.Sleep(backoff)
-			lastErr = fmt.Errorf("rate limited (attempt %d)", attempt+1)
-			continue
-		}
+			return &nvdResp, nil
 
-		if resp.StatusCode != http.StatusOK {
+		case http.StatusTooManyRequests, http.StatusServiceUnavailable,
+			http.StatusBadGateway, http.StatusGatewayTimeout:
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			continue
+
+		default:
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 		}
-
-		var nvdResp NVDResponse
-		if err := json.NewDecoder(resp.Body).Decode(&nvdResp); err != nil {
-			resp.Body.Close()
-			return nil, err
-		}
-		resp.Body.Close()
-
-		return &nvdResp, nil
 	}
 
 	return nil, fmt.Errorf("max retries exceeded: %w", lastErr)

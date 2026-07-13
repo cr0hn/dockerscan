@@ -5,6 +5,21 @@ Most recent changes appear first.
 
 ---
 
+## [2026-07-13] - Harden CVE database update against slow/unstable NVD API
+
+### Fixed
+- `cmd/nvd2sqlite/main.go`: retry with exponential backoff on HTTP 503/502/504 and on timeouts (connection or while reading body) — previously only 429 was retried, causing daily workflow failures on 2026-07-01/03/09/13 (NVD takes >60s to respond during 00:00-03:30 UTC peak)
+- `cmd/nvd2sqlite/main.go`: HTTP client timeout raised from 60s to 300s
+- `cmd/nvd2sqlite/main.go`: NVD API key now sent in the `apiKey` header as required by NVD API 2.0 (was sent as URL query param, likely ignored)
+
+### Changed
+- `cmd/nvd2sqlite/main.go`: removed automatic rate-limit bump to 50 req/30s when an API key is present — the caller controls the rate explicitly
+- `.github/workflows/update-cve-db.yml`: cron moved from 00:00 UTC to 06:47 UTC (off-peak for NVD, non-round minute so GitHub delays it less)
+- `.github/workflows/update-cve-db.yml`: fixed rate limit of 5 req/30s (= 6s between requests, NVD official recommendation even with API key); external retries raised from 3 (2 min wait) to 5 (10 min wait)
+- Repo secret `NVD_API_KEY` configured (better QoS from NVD even at the same request rate)
+
+---
+
 ## [2026-06-24] - Fix CVE database update workflow
 
 ### Fixed
