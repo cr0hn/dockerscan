@@ -2,12 +2,12 @@
 
 <img src="logo.png" alt="DockerScan Logo" width="200">
 
-# DockerScan v2.0
+# DockerScan
 
 ### *The Most Comprehensive Docker Security Scanner*
 
 [![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/go-1.21+-00ADD8.svg?logo=go)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/go-1.25+-00ADD8.svg?logo=go)](https://golang.org/)
 [![Version](https://img.shields.io/github/v/release/cr0hn/dockerscan?label=version)](https://github.com/cr0hn/dockerscan/releases)
 [![CI/CD](https://img.shields.io/badge/CI/CD-Manual-blue.svg)](https://github.com/cr0hn/dockerscan/actions/workflows/dockerscan.yml)
 [![Test Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen.svg)](https://github.com/cr0hn/dockerscan)
@@ -16,112 +16,105 @@
 
 **By [Daniel Garcia (cr0hn)](https://cr0hn.com)** | [GitHub](https://github.com/cr0hn/dockerscan) | [Website](https://cr0hn.com)
 
----
-
-[Features](#-features) •
-[Installation](#-installation) •
-[Quick Start](#-quick-start) •
-[Documentation](#-documentation) •
-[Use Cases](#-use-cases) •
-[What's New](#-whats-new-in-v20) •
-[Contributing](#-contributing)
+[Features](#features) •
+[Installation](#installation) •
+[Quick Start](#quick-start) •
+[Documentation](#documentation) •
+[Use Cases](#use-cases) •
+[What's New](#whats-new-in-v210) •
+[Contributing](#contributing)
 
 </div>
 
----
+## Table of Contents
 
-## 📑 Table of Contents
+- [Overview](#overview)
+- [Features](#features)
+- [What's New in v2.1.0](#whats-new-in-v210)
+- [What's New in v2.0](#whats-new-in-v20)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+  - [Private Registry Authentication](#private-registry-authentication)
+- [Security Scanners](#security-scanners)
+- [Output Formats](#output-formats)
+- [Use Cases](#use-cases)
+- [Comparison](#comparison-with-other-tools)
+- [Architecture](#architecture)
+- [Contributing](#contributing)
+- [References](#references)
+- [License](#license)
+- [Author](#author)
 
-- [Overview](#-overview)
-- [Features](#-features)
-- [What's New in v2.0](#-whats-new-in-v20)
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
-- [Usage](#-usage)
-  - [Private Registry Authentication](#-private-registry-authentication)
-- [Security Scanners](#-security-scanners)
-- [Output Formats](#-output-formats)
-- [Use Cases](#-use-cases)
-- [Comparison](#-comparison-with-other-tools)
-- [Architecture](#-architecture)
-- [Contributing](#-contributing)
-- [References](#-references)
-- [License](#-license)
-- [Author](#-author)
+## Overview
 
----
+**DockerScan v2** is a next-generation security scanner for Docker containers and images, completely rewritten in Go. It combines multiple security scanning techniques based on the latest 2024-2025 research, industry standards (CIS Benchmark, NIST SP 800-190), and real-world attack patterns discovered in production environments.
 
-## 🎯 Overview
+### Why DockerScan v2?
 
-**DockerScan v2.0** is a next-generation security scanner for Docker containers and images, completely rewritten in Go. It combines multiple security scanning techniques based on the latest 2024-2025 research, industry standards (CIS Benchmark, NIST SP 800-190), and real-world attack patterns discovered in production environments.
+- **Most Comprehensive**: Combines 5+ security scanning techniques in one tool
+- **Latest Research**: Based on 2024-2025 supply chain attacks and CVEs
+- **Production Ready**: SARIF output for CI/CD, exit codes for automation
+- **Blazing Fast**: Written in Go with concurrent scanning
+- **Extensible**: Plugin architecture for custom scanners
+- **Source-Available**: Free for internal, educational, research, and non-competing commercial use (see [License](#license))
 
-### Why DockerScan v2.0?
+## Features
 
-- ✅ **Most Comprehensive**: Combines 5+ security scanning techniques in one tool
-- ✅ **Latest Research**: Based on 2024-2025 supply chain attacks and CVEs
-- ✅ **Production Ready**: SARIF output for CI/CD, exit codes for automation
-- ✅ **Blazing Fast**: Written in Go with concurrent scanning
-- ✅ **Extensible**: Plugin architecture for custom scanners
-- ✅ **Free & Open Source**: BSD-3 license
-
----
-
-## 🌟 Features
-
-### 🛡️ **Security Scanning Modules**
+### **Security Scanning Modules**
 
 #### 1. **CIS Docker Benchmark v1.7.0**
 Complete compliance checking with 80+ automated controls:
-- ✅ Host configuration security (13 checks)
-- ✅ Docker daemon hardening (18 checks)
-- ✅ File & directory permissions (9 checks)
-- ✅ Container image best practices (13 checks)
-- ✅ Runtime security validation (31+ checks)
-- ✅ Security operations compliance
+- Host configuration security (13 checks)
+- Docker daemon hardening (18 checks)
+- File & directory permissions (9 checks)
+- Container image best practices (13 checks)
+- Runtime security validation (31+ checks)
+- Security operations compliance
 
-#### 2. **Supply Chain Attack Detection** 🆕
+#### 2. **Supply Chain Attack Detection**
 Based on real 2024 attack campaigns:
-- ✅ **Imageless Container Detection** - Identifies malicious containers with no actual layers (4M+ found on Docker Hub)
-- ✅ **Cryptocurrency Miner Detection** - Detects mining malware (120K+ malicious image pulls detected)
-- ✅ **Backdoored Library Detection** - Catches compromised dependencies (xz-utils, liblzma incidents)
-- ✅ **Image Signature Verification** - Validates signatures using Notary/Cosign
-- ✅ **Phishing Content Detection** - Scans documentation for social engineering
-- ✅ **Malicious Network Destinations** - Identifies C2 servers, mining pools, Tor nodes
+- **Imageless Container Detection** - Identifies malicious containers with no actual layers (4M+ found on Docker Hub)
+- **Cryptocurrency Miner Detection** - Detects mining malware (120K+ malicious image pulls detected)
+- **Backdoored Library Detection** - Catches compromised dependencies (xz-utils, liblzma incidents)
+- **Image Signature Verification** - Validates signatures using Notary/Cosign
+- **Phishing Content Detection** - Scans documentation for social engineering
+- **Malicious Network Destinations** - Identifies C2 servers, mining pools, Tor nodes
 
-#### 3. **Advanced Secrets Detection** 🔑
+#### 3. **Advanced Secrets Detection**
 40+ secret patterns including modern APIs (2024 update):
-- ✅ **Cloud Providers**: AWS, GCP, Azure credentials
-- ✅ **Version Control**: GitHub, GitLab, Bitbucket tokens
-- ✅ **AI/ML APIs**: OpenAI, Anthropic, Hugging Face keys
-- ✅ **Payment**: Stripe, PayPal, Square keys
-- ✅ **Communication**: Slack, SendGrid, Twilio, Mailchimp
-- ✅ **Authentication**: JWT tokens, OAuth tokens
-- ✅ **Crypto**: Private keys (RSA, SSH, PGP, EC, DSA), certificates
-- ✅ **Databases**: PostgreSQL, MySQL, MongoDB connection strings
-- ✅ **Docker**: Registry authentication tokens
-- ✅ **Entropy Analysis**: Shannon entropy calculation for unknown secrets (>4.5 threshold)
+- **Cloud Providers**: AWS, GCP, Azure credentials
+- **Version Control**: GitHub, GitLab, Bitbucket tokens
+- **AI/ML APIs**: OpenAI, Anthropic, Hugging Face keys
+- **Payment**: Stripe, PayPal, Square keys
+- **Communication**: Slack, SendGrid, Twilio, Mailchimp
+- **Authentication**: JWT tokens, OAuth tokens
+- **Crypto**: Private keys (RSA, SSH, PGP, EC, DSA), certificates
+- **Databases**: PostgreSQL, MySQL, MongoDB connection strings
+- **Docker**: Registry authentication tokens
+- **Entropy Analysis**: Shannon entropy calculation for unknown secrets (>4.5 threshold)
 
-#### 4. **CVE & Vulnerability Scanning** 🚨
+#### 4. **CVE & Vulnerability Scanning**
 Critical 2024-2025 CVE detection:
-- ✅ **CVE-2024-21626** - runc container escape (CVSS 8.6)
-- ✅ **CVE-2024-23651** - BuildKit cache poisoning RCE (CVSS 9.1)
-- ✅ **CVE-2024-23652** - BuildKit race condition (CVSS 7.5)
-- ✅ **CVE-2024-23653** - BuildKit privilege escalation
-- ✅ **CVE-2024-8695/8696** - Docker Desktop RCE (CVSS 8.8)
-- ✅ **CVE-2025-9074** - Docker Desktop local access vulnerability
-- ✅ End-of-life base image detection
-- ✅ Known vulnerable package scanning
+- **CVE-2024-21626** - runc container escape (CVSS 8.6)
+- **CVE-2024-23651** - BuildKit cache poisoning RCE (CVSS 9.1)
+- **CVE-2024-23652** - BuildKit race condition (CVSS 7.5)
+- **CVE-2024-23653** - BuildKit privilege escalation
+- **CVE-2024-8695/8696** - Docker Desktop RCE (CVSS 8.8)
+- **CVE-2025-9074** - Docker Desktop local access vulnerability
+- End-of-life base image detection
+- Known vulnerable package scanning
 
-#### 5. **Runtime Security Analysis** ⚙️
+#### 5. **Runtime Security Analysis**
 Container runtime hardening checks:
-- ✅ **Linux Capabilities Auditing** - Detects dangerous capabilities (CAP_SYS_ADMIN, CAP_NET_ADMIN, etc.)
-- ✅ **Seccomp Profile Validation** - Ensures syscall filtering is enabled
-- ✅ **AppArmor/SELinux Checks** - Mandatory access control verification
-- ✅ **Privileged Container Detection** - Identifies containers with full host access
-- ✅ **Namespace Isolation** - PID, IPC, network, user namespace checks
-- ✅ **Container Escape Indicators** - Detects common escape techniques
+- **Linux Capabilities Auditing** - Detects dangerous capabilities (CAP_SYS_ADMIN, CAP_NET_ADMIN, etc.)
+- **Seccomp Profile Validation** - Ensures syscall filtering is enabled
+- **AppArmor/SELinux Checks** - Mandatory access control verification
+- **Privileged Container Detection** - Identifies containers with full host access
+- **Namespace Isolation** - PID, IPC, network, user namespace checks
+- **Container Escape Indicators** - Detects common escape techniques
 
-### 📊 **Reporting & Integration**
+### **Reporting & Integration**
 
 - **JSON** - Machine-readable output for automation
 - **SARIF** - Native integration with:
@@ -132,18 +125,26 @@ Container runtime hardening checks:
 - **Beautiful CLI** - Color-coded severity levels with emojis
 - **Exit Codes** - CI/CD friendly (0=clean, 1=warnings, 2=critical)
 
-### 🚀 **Performance**
+### **Performance**
 
-- ⚡ **10x Faster** than Python alternatives
-- 🔄 **Concurrent Scanning** with Go goroutines
-- 💾 **Low Memory** footprint (~50-100MB)
-- 📦 **Single Binary** - No dependencies
+- **10x Faster** than Python alternatives
+- **Concurrent Scanning** with Go goroutines
+- **Low Memory** footprint (~50-100MB)
+- **Single Binary** - No dependencies
 
----
+## What's New in v2.1.0
 
-## 🆕 What's New in v2.0?
+Version 2.1.0 (released 2026-07-13) overhauls the CVE data pipeline and package vulnerability matching:
 
-DockerScan v2.0 is a **complete rewrite** from the ground up. Here's what changed from v1.x:
+- **CVE database built from MITRE cvelistV5** - The database is now generated from the official MITRE cvelistV5 daily snapshots instead of the NVD API. No NVD API dependency, no API keys, and no rate limits.
+- **Package CVE detection fixed end-to-end** - Package-to-CVE matching was rewritten around a dpkg-style version comparator (Debian Policy 5.6.12), with per-(vendor, product) version ranges for accurate matching.
+- **Vendor-verified alias matching** - Matches now carry `vendor_verified` finding metadata. Name-only matches are flagged as such and include remediation caveats, so you can tell a vendor-verified match from a heuristic one.
+- **Derived fix information** - `FixedVersion` is derived from the matched version ranges, and backport disclosure metadata (`match_basis`, `distro_revision`) is included so distro-backported fixes are not reported as vulnerable.
+- **Optional CVSS enrichment from NVD** - A best-effort enrichment step can pull CVSS scores from the NVD API via `--enrich-from-nvd`, `--enrich-only`, and `--enrich-timeout`. It is non-blocking and safe to skip in CI (it never fails the build).
+
+## What's New in v2.0?
+
+DockerScan v2.0 was a **complete rewrite** from the ground up. Here's what changed from v1.x:
 
 ### Major Changes
 
@@ -155,38 +156,38 @@ DockerScan v2.0 is a **complete rewrite** from the ground up. Here's what change
 | **Distribution** | pip install + deps | Single binary |
 | **Security Scanners** | 2 modules | 5 modules |
 | **CIS Benchmark** | Partial | Full v1.7.0 (80+ checks) |
-| **Supply Chain** | ❌ Not available | ✅ Based on 2024 research |
+| **Supply Chain** | Not available | Based on 2024 research |
 | **Secret Patterns** | 10 patterns | 40+ patterns |
 | **CVE Detection** | Basic | 2024-2025 CVEs |
-| **Runtime Security** | ❌ Not available | ✅ Full capabilities audit |
-| **SARIF Output** | ❌ Not available | ✅ Full support |
+| **Runtime Security** | Not available | Full capabilities audit |
+| **SARIF Output** | Not available | Full support |
 | **CI/CD Integration** | Manual | Native (exit codes, SARIF) |
 
 ### What's Preserved from v1.x
 
-- ✅ **Offensive Tools** - Image trojanization capabilities (coming soon in v2.1)
-- ✅ **Registry Operations** - Push, pull, delete operations (coming soon in v2.1)
-- ✅ **Network Scanning** - Docker registry discovery (coming soon in v2.1)
+- **Offensive Tools** - Image trojanization capabilities (coming soon in v2.1)
+- **Registry Operations** - Push, pull, delete operations (coming soon in v2.1)
+- **Network Scanning** - Docker registry discovery (coming soon in v2.1)
 
-### New in v2.0.5 🔐
+### New in v2.0.5
 
-- 🔑 **Private Registry Authentication** - Full support for scanning images from private registries (fixes #24)
-- 🌐 **Multi-Registry Support** - Docker Hub, GHCR, ECR, GCR, ACR, GitLab, and self-hosted registries
-- 🔐 **Multiple Auth Methods** - Environment variables (CI/CD), CLI flags (testing), Docker config file (seamless)
-- 🎯 **Smart Auth Priority** - CLI flags > ENV vars > Docker config (automatic selection)
-- 📝 **Enhanced Error Messages** - Registry-specific hints (ECR token expiration, rate limits, certificates)
-- 🧪 **Comprehensive Testing** - 64 test cases, 91.2% coverage, tested with real private registry
-- 📚 **Complete Documentation** - Examples for all major cloud registries and authentication methods
+- **Private Registry Authentication** - Full support for scanning images from private registries (fixes #24)
+- **Multi-Registry Support** - Docker Hub, GHCR, ECR, GCR, ACR, GitLab, and self-hosted registries
+- **Multiple Auth Methods** - Environment variables (CI/CD), CLI flags (testing), Docker config file (seamless)
+- **Smart Auth Priority** - CLI flags > ENV vars > Docker config (automatic selection)
+- **Enhanced Error Messages** - Registry-specific hints (ECR token expiration, rate limits, certificates)
+- **Comprehensive Testing** - 64 test cases, 91.2% coverage, tested with real private registry
+- **Complete Documentation** - Examples for all major cloud registries and authentication methods
 
 ### New in v2.0.4
 
-- 🗄️ **CVE Database Integration** - Local SQLite database with NVD data (2.5 years of CVEs)
-- 🔄 **Daily Auto-Updates** - GitHub Action updates the CVE database every day
-- ⚡ **Parallel CVE Downloads** - 4 workers for faster database builds (nvd2sqlite)
-- 🔁 **Retry with Backoff** - Automatic retry for rate-limited NVD API requests
-- 📦 **`--from-file` flag** - Install CVE database from local file (offline/air-gapped)
-- 🔇 **Quiet mode (`-q`)** - Suppress banner for CI/CD pipelines
-- 🧹 **Reduced false positives** - Improved secrets detection with entropy filtering
+- **CVE Database Integration** - Local SQLite database with NVD data (2.5 years of CVEs)
+- **Daily Auto-Updates** - GitHub Action updates the CVE database every day
+- **Parallel CVE Downloads** - 4 workers for faster database builds (nvd2sqlite)
+- **Retry with Backoff** - Automatic retry for rate-limited NVD API requests
+- **`--from-file` flag** - Install CVE database from local file (offline/air-gapped)
+- **Quiet mode (`-q`)** - Suppress banner for CI/CD pipelines
+- **Reduced false positives** - Improved secrets detection with entropy filtering
 
 ### Why the Rewrite?
 
@@ -196,9 +197,7 @@ DockerScan v2.0 is a **complete rewrite** from the ground up. Here's what change
 4. **Extensibility** - Clean plugin architecture for custom scanners
 5. **Maintainability** - Type safety, better error handling, easier to contribute
 
----
-
-## 📦 Installation
+## Installation
 
 ### Option 1: Download Pre-built Binary (Recommended)
 
@@ -275,9 +274,7 @@ go build -o bin/dockerscan ./cmd/dockerscan
 go install github.com/cr0hn/dockerscan/v2/cmd/dockerscan@latest
 ```
 
----
-
-## 🚀 Quick Start
+## Quick Start
 
 ### First-Time Setup
 
@@ -349,9 +346,7 @@ dockerscan -q nginx:latest
 📄 SARIF report saved to: dockerscan-report.sarif
 ```
 
----
-
-## 📖 Usage
+## Usage
 
 ### Command Line Options
 
@@ -419,7 +414,7 @@ dockerscan --debug ubuntu:22.04
 dockerscan ghcr.io/myorg/private-app:v1.0
 ```
 
-### 🔐 Private Registry Authentication
+### Private Registry Authentication
 
 DockerScan supports three methods for authenticating with private registries:
 
@@ -638,9 +633,7 @@ aws ecr get-login-password --region us-east-1 | \
 - Add the CA certificate to your system trust store
 - Or configure Docker to trust the registry (see Docker documentation)
 
----
-
-## 🔍 Security Scanners
+## Security Scanners
 
 ### CIS Docker Benchmark
 
@@ -724,9 +717,7 @@ Analyzes:
 - Namespace isolation
 - Privileged mode usage
 
----
-
-## 📁 Output Formats
+## Output Formats
 
 ### JSON Output
 
@@ -778,9 +769,7 @@ Compatible with GitHub Security, Azure DevOps, VS Code:
 }
 ```
 
----
-
-## 💼 Use Cases
+## Use Cases
 
 ### 1. **CI/CD Pipeline Integration**
 
@@ -894,23 +883,21 @@ if [ $? -ne 0 ]; then
 fi
 ```
 
----
-
-## 📊 Comparison with Other Tools
+## Comparison with Other Tools
 
 | Feature | DockerScan v2.0 | Trivy | Clair | Snyk | Grype |
 |---------|----------------|-------|-------|------|-------|
-| **CIS Benchmark v1.7** | ✅ Full (80+ checks) | ❌ | ❌ | Partial | ❌ |
-| **Supply Chain Detection (2024)** | ✅ Yes | ❌ | ❌ | ❌ | ❌ |
-| **Secrets Scanning** | ✅ 40+ patterns | Basic | ❌ | ✅ | ❌ |
-| **CVE Database** | ✅ 2024-2025 CVEs | ✅ | ✅ | ✅ | ✅ |
-| **Runtime Security** | ✅ Full | ❌ | ❌ | ❌ | ❌ |
-| **SARIF Output** | ✅ | ✅ | ❌ | ✅ | ✅ |
-| **Speed (Go)** | ⚡ Very Fast | ⚡ Very Fast | 🐌 Slow | ⚡ Fast | ⚡ Very Fast |
-| **Extensible** | ✅ Plugin system | Limited | Limited | ❌ | Limited |
-| **Exit Codes** | ✅ CI/CD ready | ✅ | Partial | ✅ | ✅ |
-| **Cost** | 🆓 Free | 🆓 Free | 🆓 Free | 💰 Paid tiers | 🆓 Free |
-| **Offline Mode** | ✅ | ✅ | ❌ | ❌ | ✅ |
+| **CIS Benchmark v1.7** | Full (80+ checks) | No | No | Partial | No |
+| **Supply Chain Detection (2024)** | Yes | No | No | No | No |
+| **Secrets Scanning** | 40+ patterns | Basic | No | Yes | No |
+| **CVE Database** | 2024-2025 CVEs | Yes | Yes | Yes | Yes |
+| **Runtime Security** | Full | No | No | No | No |
+| **SARIF Output** | Yes | Yes | No | Yes | Yes |
+| **Speed (Go)** | Very Fast | Very Fast | Slow | Fast | Very Fast |
+| **Extensible** | Plugin system | Limited | Limited | No | Limited |
+| **Exit Codes** | CI/CD ready | Yes | Partial | Yes | Yes |
+| **Cost** | Free | Free | Free | Paid tiers | Free |
+| **Offline Mode** | Yes | Yes | No | No | Yes |
 | **License** | Proprietary Source-Available | Apache-2.0 | Apache-2.0 | Proprietary | Apache-2.0 |
 
 ### Why Choose DockerScan?
@@ -921,9 +908,7 @@ fi
 - **Developer Friendly**: Beautiful CLI output with actionable remediation
 - **Enterprise Ready**: SARIF + exit codes + JSON output
 
----
-
-## 🏗️ Architecture
+## Architecture
 
 ### Project Structure
 
@@ -965,11 +950,11 @@ The database is built from the **MITRE cvelistV5 dataset** (the official CVE Lis
 
 #### Database Features
 
-- 🗄️ **Pre-built database** - Ready to use, no manual setup required
-- 🔄 **Daily updates** - GitHub Action rebuilds the full database every day from the MITRE cvelistV5 midnight snapshot
-- 📅 **2.5 years of CVE data** - ~125,000 CVEs, ~500,000 affected-product entries
-- ⚡ **Fast lookups** - SQLite with optimized indexes
-- 🌐 **Hosted on GitHub** - Downloaded automatically with `update-db` command
+- **Pre-built database** - Ready to use, no manual setup required
+- **Daily updates** - A GitHub Action rebuilds the full database every day at 06:47 UTC from the MITRE cvelistV5 midnight snapshot
+- **30-month window** - ~125,000 CVEs and ~432,000 affected-product rows (schema_version 2)
+- **Fast lookups** - SQLite with optimized indexes
+- **Hosted on GitHub** - Downloaded automatically with the `update-db` command
 
 #### Updating the Database
 
@@ -991,8 +976,11 @@ For advanced users, you can build the CVE database from the MITRE cvelistV5 snap
 # Build the tool
 go build -o bin/nvd2sqlite-cvelistV5 ./cmd/nvd2sqlite-cvelistV5
 
-# Download the latest snapshot and build the database (last 2.5 years by default)
+# Download the latest snapshot and build the database (last 30 months by default)
 ./bin/nvd2sqlite-cvelistV5 --output data/cve-db.sqlite --verbose
+
+# Optionally enrich CVSS scores from the NVD API (best-effort, non-blocking)
+./bin/nvd2sqlite-cvelistV5 --output data/cve-db.sqlite --enrich-from-nvd
 
 # Custom date range
 ./bin/nvd2sqlite-cvelistV5 --output data/cve-db.sqlite \
@@ -1005,14 +993,13 @@ go build -o bin/nvd2sqlite-cvelistV5 ./cmd/nvd2sqlite-cvelistV5
 ```
 
 **nvd2sqlite-cvelistV5 features:**
-- 🌐 **No API keys, no rate limits** - single zip download from GitHub's CDN
-- ⚡ **Parallel parsing** - one worker per CPU core, ~300k CVE records in minutes
-- 🧹 **Version-range normalization** - free-text CNA ranges (`>=1.0, <2.0`, comma lists, `v` prefixes) converted to proper ranges
-- 🗄️ **SQLite output** with indexed tables for fast lookups
+- **No API keys, no rate limits** - single zip download from GitHub's CDN
+- **Parallel parsing** - one worker per CPU core, ~300k CVE records in minutes
+- **Version-range normalization** - free-text CNA ranges (`>=1.0, <2.0`, comma lists, `v` prefixes) converted to proper ranges
+- **Optional CVSS enrichment** - best-effort NVD lookup via `--enrich-from-nvd` / `--enrich-only` / `--enrich-timeout`
+- **SQLite output** with indexed tables for fast lookups
 
 > **Deprecated**: the previous `cmd/nvd2sqlite` tool (NVD API 2.0 source) is kept for reference but is no longer used or maintained. The NVD API's rate limits and frequent 503s/timeouts made daily automated builds unreliable.
-
----
 
 ### Extensibility
 
@@ -1053,9 +1040,7 @@ func (s *MyScanner) Scan(ctx context.Context, target models.ScanTarget) ([]model
 // registry.Register(myscan.NewMyScanner())
 ```
 
----
-
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! DockerScan is designed to be extensible.
 
@@ -1104,9 +1089,7 @@ We especially welcome:
 - Docker Compose security analysis
 - IaC scanning (Dockerfiles)
 
----
-
-## 📚 References
+## References
 
 ### Standards & Benchmarks
 
@@ -1131,13 +1114,13 @@ We especially welcome:
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the **DockerScan Proprietary Source-Available License**.
 
 ### What This Means
 
-✅ **You CAN (Free of Charge):**
+**You CAN (Free of Charge):**
 - Use DockerScan **for free** for internal security scanning
 - Use it in your **CI/CD pipelines** and security workflows
 - **Modify, fork, and contribute** back to the community
@@ -1145,7 +1128,7 @@ This project is licensed under the **DockerScan Proprietary Source-Available Lic
 - Use it as a **tool in professional services** (consulting, security audits, pentesting)
 - **Integrate** it into other products where it's an ancillary component
 
-❌ **You CANNOT (without express written permission or commercial license):**
+**You CANNOT (without express written permission or commercial license):**
 - Offer **Docker scanning as a commercial SaaS**
 - **Sell hosted instances** of DockerScan
 - Build a **commercial platform** primarily based on DockerScan
@@ -1154,10 +1137,10 @@ This project is licensed under the **DockerScan Proprietary Source-Available Lic
 ### Why This License?
 
 This license protects the project's sustainability by:
-- ✅ Granting **freedom** to use the software for legitimate purposes
-- ❌ Preventing **harmful free-riding** where companies profit from offering it as a service without contributing back
-- 💰 Ensuring the project remains **sustainable** through commercial licensing for competing uses
-- 🔓 Keeping the **source code available** for transparency and community contributions
+- Granting **freedom** to use the software for legitimate purposes
+- Preventing **harmful free-riding** where companies profit from offering it as a service without contributing back
+- Ensuring the project remains **sustainable** through commercial licensing for competing uses
+- Keeping the **source code available** for transparency and community contributions
 
 **This is NOT open source** - it's **source-available** with restrictions on commercial competitive use.
 
@@ -1171,15 +1154,13 @@ This license protects the project's sustainability by:
 
 **Contact for commercial licensing:**
 
-📧 Email: cr0hn [at] cr0hn.com
-🌐 Website: https://cr0hn.com
-💼 Flexible licensing terms available for enterprise and startups
+Email: cr0hn [at] cr0hn.com
+Website: https://cr0hn.com
+Flexible licensing terms available for enterprise and startups
 
 See the [LICENSE](LICENSE) file for complete legal terms.
 
----
-
-## 👤 Author
+## Author
 
 <div align="center">
 
@@ -1193,9 +1174,7 @@ See the [LICENSE](LICENSE) file for complete legal terms.
 
 </div>
 
----
-
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Special thanks to:
 - The Docker security community
@@ -1204,9 +1183,7 @@ Special thanks to:
 - Security researchers who discovered the 2024 supply chain attacks
 - All contributors and users of DockerScan
 
----
-
-## 📞 Support
+## Support
 
 - **Issues**: [GitHub Issues](https://github.com/cr0hn/dockerscan/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/cr0hn/dockerscan/discussions)
@@ -1216,10 +1193,10 @@ Special thanks to:
 
 <div align="center">
 
-**⭐ If you find DockerScan useful, please star the repository! ⭐**
+**If you find DockerScan useful, please star the repository!**
 
 *Making Docker Security Accessible to Everyone*
 
-[⬆ Back to Top](#-dockerscan-v20)
+[Back to Top](#dockerscan-v20)
 
 </div>
