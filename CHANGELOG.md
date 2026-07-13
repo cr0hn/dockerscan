@@ -5,6 +5,23 @@ Most recent changes appear first.
 
 ---
 
+## [2026-07-13] - New CVE database source: MITRE cvelistV5 (replaces NVD API)
+
+### Added
+- `cmd/nvd2sqlite-cvelistV5/`: new tool that builds the same SQLite CVE database from the MITRE cvelistV5 daily baseline (GitHub release zip, ~525 MB) instead of the NVD API — no API key, no rate limits, no NVD availability issues. Drop-in replacement: identical schema, aliases and metadata keys. The old `cmd/nvd2sqlite` is kept unchanged.
+- Parser normalizes free-text version expressions from CNAs (`< 1.5`, `>=1.0, <2.0`, comma lists, `v` prefixes) into proper version ranges — 67,328 raw rows reduced to 1,750 (97%) in a full snapshot
+- Unit tests (parsing/mapping/CVSS preference), e2e tests (full pipeline against fixture zips, flat and nested), and `scripts/smoke-nvd2sqlite-cvelistv5.sh`
+- Workflow sanity check: never publish a database with <100k CVEs
+- Verified locally against the real 2026-07-13 release: 125,213 CVEs, 508,770 affected products, 0 malformed, 184 MB
+
+### Changed
+- `.github/workflows/update-cve-db.yml`: builds the database from MITRE cvelistV5 every day (full 30-month rebuild, ~5 min) instead of querying the NVD API. `NVD_API_KEY` no longer needed.
+
+### Fixed
+- Daily incremental mode of the old workflow silently replaced the published `latest.db.gz` with a database containing only the last 7 days of CVEs (production DB had 1,530 CVEs instead of ~125,000). Full rebuild every run eliminates the bug.
+
+---
+
 ## [2026-07-13] - Harden CVE database update against slow/unstable NVD API
 
 ### Fixed
