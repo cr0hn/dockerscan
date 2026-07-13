@@ -225,7 +225,7 @@ func assertDatabase(t *testing.T, dbPath string) {
 	if totalCVEs != "3" {
 		t.Errorf("metadata total_cves = %q, want 3", totalCVEs)
 	}
-	if schemaVersion != "1" {
-		t.Errorf("metadata schema_version = %q, want 1", schemaVersion)
+	if schemaVersion != "2" {
+		t.Errorf("metadata schema_version = %q, want 2", schemaVersion)
 	}
 }

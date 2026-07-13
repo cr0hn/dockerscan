@@ -11,6 +11,7 @@ import (
 	"github.com/cr0hn/dockerscan/v2/internal/logger"
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner"
+	"github.com/cr0hn/dockerscan/v2/internal/version"
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
 )
 
@@ -78,8 +79,11 @@ func (s *VulnerabilityScanner) Scan(ctx context.Context, target models.ScanTarge
 	return findings, nil
 }
 
-// checkVulnerablePackages checks installed packages against vulnerability database
+// checkVulnerablePackages checks installed packages against the CVE database.
+// Version matching is done on the upstream version (epoch and distro revision
+// stripped) using the dpkg comparator in internal/version.
 func (s *VulnerabilityScanner) checkVulnerablePackages(ctx context.Context, packages []docker.PackageInfo) []models.Finding {
+	_ = ctx
 	var findings []models.Finding
 
 	// Skip if no database
@@ -104,35 +108,211 @@ func (s *VulnerabilityScanner) checkVulnerablePackages(ctx context.Context, pack
 		return findings
 	}
 
-	// Check each package
 	for _, pkg := range packages {
-		cves := cvesByPkg[pkg.Name]
-		for _, cve := range cves {
-			// Use existing version comparison logic
-			if s.isVersionVulnerable(pkg.Version, cve.VersionStart+"-"+cve.VersionEnd, cve.FixedVersion) {
-				finding := models.Finding{
-					ID:          cve.CVEID + "-" + pkg.Name,
-					Title:       fmt.Sprintf("%s in %s %s", cve.CVEID, pkg.Name, pkg.Version),
-					Description: cve.Description,
-					Severity:    models.Severity(cve.Severity),
-					Category:    "Vulnerabilities",
-					Source:      s.Name(),
-					Remediation: fmt.Sprintf("Upgrade %s to version %s or later", pkg.Name, cve.FixedVersion),
-					References:  cve.References,
-					Metadata: map[string]interface{}{
-						"cve_id":          cve.CVEID,
-						"package_name":    pkg.Name,
-						"package_version": pkg.Version,
-						"fixed_version":   cve.FixedVersion,
-						"cvss_score":      cve.CVSSScore,
-					},
-				}
-				findings = append(findings, finding)
+		installed := version.NormalizeInstalled(pkg.Version, pkg.Source)
+		distroRev := version.DistroRevision(pkg.Version, pkg.Source)
+
+		for _, cve := range cvesByPkg[pkg.Name] {
+			groups, matched, ok := evaluateCVE(installed, cve)
+			if !ok {
+				continue
 			}
+			findings = append(findings, s.buildPackageFinding(pkg, installed, distroRev, cve, groups, matched))
 		}
 	}
 
 	return findings
+}
+
+// buildPackageFinding assembles a Finding for a matched package CVE, recording
+// the matched (vendor, product) groups and ranges, the fixed version (D3, the
+// max End across ALL matching groups so the remediation never points inside
+// another matching range), the backport disclosure (D4) and the severity
+// mapping (D5).
+func (s *VulnerabilityScanner) buildPackageFinding(pkg docker.PackageInfo, installed, distroRev string, cve cvedb.CVEEntry, groups []cvedb.ProductRanges, matched []cvedb.VersionRange) models.Finding {
+	fixed := fixedVersion(matched)
+	matchedStr := rangesString(matched)
+
+	matchedProducts := make([]string, len(groups))
+	for i, g := range groups {
+		matchedProducts[i] = g.Vendor + "/" + g.Product
+	}
+
+	var remediation string
+	if fixed != "" {
+		remediation = fmt.Sprintf("Upgrade %s to version %s or later.", pkg.Name, fixed)
+	} else {
+		remediation = fmt.Sprintf("Upgrade %s beyond the affected range %s.", pkg.Name, matchedStr)
+	}
+	// D4: mandatory backport disclosure for dpkg/apk findings.
+	if distroRev != "" {
+		remediation += fmt.Sprintf(" Note: the distro may have backported a fix in revision %s; verify with the distro security tracker.", distroRev)
+	}
+
+	metadata := map[string]interface{}{
+		"cve_id":             cve.CVEID,
+		"package_name":       pkg.Name,
+		"package_version":    pkg.Version,
+		"installed_upstream": installed,
+		"matched_products":   matchedProducts,
+		"matched_range":      matchedStr,
+		"fixed_version":      fixed,
+		"cvss_score":         cve.CVSSScore,
+		"raw_severity":       cve.Severity,
+		"match_basis":        "upstream-version",
+		"distro_revision":    distroRev,
+	}
+
+	return models.Finding{
+		ID:          cve.CVEID + "-" + pkg.Name,
+		Title:       fmt.Sprintf("%s in %s %s", cve.CVEID, pkg.Name, pkg.Version),
+		Description: cve.Description,
+		Severity:    mapSeverity(cve.Severity),
+		Category:    "Vulnerabilities",
+		Source:      s.Name(),
+		Remediation: remediation,
+		References:  cve.References,
+		Metadata:    metadata,
+	}
+}
+
+// evaluateCVE returns the affected (vendor, product) groups whose ranges match
+// the installed version, together with all matched ranges pooled across groups.
+// A CVE matches if any group matches (D1). All matching groups are returned so
+// FixedVersion can be derived from the full set (a single group's End may still
+// be inside another matching group's range).
+func evaluateCVE(installed string, cve cvedb.CVEEntry) ([]cvedb.ProductRanges, []cvedb.VersionRange, bool) {
+	var groups []cvedb.ProductRanges
+	var allMatched []cvedb.VersionRange
+	for _, pr := range cve.Products {
+		if matched := matchedRangesInGroup(installed, pr); len(matched) > 0 {
+			groups = append(groups, pr)
+			allMatched = append(allMatched, matched...)
+		}
+	}
+	return groups, allMatched, len(groups) > 0
+}
+
+// matchedRangesInGroup returns the ranges in a group that match the installed
+// version. A versionless (both-bounds-empty) range counts only when the group
+// has no bounded ranges AND the group is alias-verified (D1/D2): a bare
+// product-name collision (e.g. GNU coreutils vs uutils/coreutils) must not
+// match without version evidence.
+func matchedRangesInGroup(installed string, pr cvedb.ProductRanges) []cvedb.VersionRange {
+	hasBounded := false
+	for _, r := range pr.Ranges {
+		if isBounded(r) {
+			hasBounded = true
+			break
+		}
+	}
+
+	var matched []cvedb.VersionRange
+	for _, r := range pr.Ranges {
+		if isBounded(r) {
+			if matchRange(installed, r) {
+				matched = append(matched, r)
+			}
+		} else if !hasBounded && pr.AliasVerified {
+			matched = append(matched, r)
+		}
+	}
+	return matched
+}
+
+func isBounded(r cvedb.VersionRange) bool {
+	return r.Start != "" || r.End != ""
+}
+
+// matchRange reports whether installedUpstream falls within r. An empty bound is
+// unbounded; "including" bounds are inclusive (>=/<=), "excluding" bounds are
+// exclusive (>/<). Range values are normalized (prerelease separators) before
+// comparison.
+func matchRange(installedUpstream string, r cvedb.VersionRange) bool {
+	if r.Start != "" {
+		c := version.Compare(installedUpstream, version.NormalizeRangeValue(r.Start))
+		if r.StartType == "excluding" {
+			if c <= 0 {
+				return false
+			}
+		} else if c < 0 {
+			return false
+		}
+	}
+	if r.End != "" {
+		c := version.Compare(installedUpstream, version.NormalizeRangeValue(r.End))
+		if r.EndType == "excluding" {
+			if c >= 0 {
+				return false
+			}
+		} else if c > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// fixedVersion returns the largest excluding-end bound among the matched ranges
+// (the version escaping all matched ranges), or "" when none is excluding (D3).
+func fixedVersion(matched []cvedb.VersionRange) string {
+	bestRaw, bestNorm := "", ""
+	for _, r := range matched {
+		if r.EndType != "excluding" || r.End == "" {
+			continue
+		}
+		n := version.NormalizeRangeValue(r.End)
+		if bestNorm == "" || version.Compare(n, bestNorm) > 0 {
+			bestNorm, bestRaw = n, r.End
+		}
+	}
+	return bestRaw
+}
+
+// rangesString renders matched ranges as interval notation for finding metadata.
+func rangesString(ranges []cvedb.VersionRange) string {
+	parts := make([]string, 0, len(ranges))
+	for _, r := range ranges {
+		parts = append(parts, rangeString(r))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func rangeString(r cvedb.VersionRange) string {
+	lo := "(-inf"
+	if r.Start != "" {
+		open := "["
+		if r.StartType == "excluding" {
+			open = "("
+		}
+		lo = open + r.Start
+	}
+	hi := "+inf)"
+	if r.End != "" {
+		close := ")"
+		if r.EndType == "including" {
+			close = "]"
+		}
+		hi = r.End + close
+	}
+	return lo + "," + hi
+}
+
+// mapSeverity maps a database severity to a valid models.Severity. UNKNOWN,
+// NONE and any unrecognized value map to Info; the raw value is preserved in
+// finding metadata (D5).
+func mapSeverity(raw string) models.Severity {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "CRITICAL":
+		return models.SeverityCritical
+	case "HIGH":
+		return models.SeverityHigh
+	case "MEDIUM":
+		return models.SeverityMedium
+	case "LOW":
+		return models.SeverityLow
+	default:
+		return models.SeverityInfo
+	}
 }
 
 // checkBaseImage detects the base image from history
@@ -477,49 +657,6 @@ func (s *VulnerabilityScanner) detectBaseImageFromHistory(history []docker.Histo
 	// Use the shared helper function to extract the last base image
 	// This handles multi-stage builds and platform flags correctly
 	return models.ExtractLastBaseImage(historyStrings)
-}
-
-// isVersionVulnerable checks if a version is vulnerable
-// A package is vulnerable if it's within the affected version range AND below the fixed version
-func (s *VulnerabilityScanner) isVersionVulnerable(installedVersion, affectedVersions, fixedVersion string) bool {
-	inAffectedRange := false
-	belowFixedVersion := false
-
-	// Parse version ranges (e.g., "1.0.1-1.0.1f" or "2.0-2.14.1")
-	if affectedVersions != "" && strings.Contains(affectedVersions, "-") {
-		parts := strings.Split(affectedVersions, "-")
-		if len(parts) == 2 {
-			minVersion := strings.TrimSpace(parts[0])
-			maxVersion := strings.TrimSpace(parts[1])
-
-			// Check if installed version is within vulnerable range
-			if s.compareVersion(installedVersion, minVersion) >= 0 &&
-				s.compareVersion(installedVersion, maxVersion) <= 0 {
-				inAffectedRange = true
-			}
-		}
-	} else if affectedVersions != "" {
-		// If no range specified, treat as minimum version
-		if s.compareVersion(installedVersion, affectedVersions) >= 0 {
-			inAffectedRange = true
-		}
-	} else {
-		// No affected versions specified, assume all versions before fix are affected
-		inAffectedRange = true
-	}
-
-	// Check if version is less than fixed version
-	if fixedVersion != "" {
-		if s.compareVersion(installedVersion, fixedVersion) < 0 {
-			belowFixedVersion = true
-		}
-	} else {
-		// No fixed version specified, so can't determine if fixed
-		belowFixedVersion = true
-	}
-
-	// Vulnerable if in affected range AND below fixed version
-	return inAffectedRange && belowFixedVersion
 }
 
 // isBaseImageVulnerable checks if a base image version is vulnerable

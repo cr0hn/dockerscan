@@ -1,5 +1,10 @@
 # nvd2sqlite - NVD API to SQLite Converter
 
+> ⚠️ **DEPRECATED (2026-07-13)**: this tool is no longer used or maintained. The CVE
+> database is now built with [`cmd/nvd2sqlite-cvelistV5`](../nvd2sqlite-cvelistV5/),
+> which sources the MITRE cvelistV5 daily snapshot instead of the NVD API (no rate
+> limits, no API key, no NVD availability issues). This tool is kept for reference only.
+
 A command-line tool that downloads CVE data from the NVD API 2.0 and stores it in an SQLite database for offline vulnerability scanning.
 
 ## Features

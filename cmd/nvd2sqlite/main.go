@@ -243,6 +243,7 @@ func main() {
 
 	// Banner
 	fmt.Println("nvd2sqlite - NVD to SQLite Converter")
+	fmt.Println("⚠️  DEPRECATED: use nvd2sqlite-cvelistV5 instead (MITRE cvelistV5 source, no rate limits)")
 	fmt.Printf("  Using %d parallel downloaders\n", numDownloaders)
 	fmt.Println()
 

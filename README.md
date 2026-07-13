@@ -957,15 +957,17 @@ dockerscan/
     └── client.go
 ```
 
-### CVE Database & nvd2sqlite Tool
+### CVE Database & nvd2sqlite-cvelistV5 Tool
 
 DockerScan uses a local SQLite database for CVE lookups. The database is **automatically updated daily** via GitHub Actions and hosted in the repository, so you always have access to the latest CVE data.
+
+The database is built from the **MITRE cvelistV5 dataset** (the official CVE List, published as a daily snapshot on [GitHub](https://github.com/CVEProject/cvelistV5/releases)). Unlike the NVD API, this source has no rate limits, no API keys and no availability problems: the full snapshot is a single ~525 MB zip served by GitHub's CDN.
 
 #### Database Features
 
 - 🗄️ **Pre-built database** - Ready to use, no manual setup required
-- 🔄 **Daily updates** - GitHub Action updates the database every day at 00:00 UTC
-- 📅 **2.5 years of CVE data** - Covers CVEs from mid-2022 to present
+- 🔄 **Daily updates** - GitHub Action rebuilds the full database every day from the MITRE cvelistV5 midnight snapshot
+- 📅 **2.5 years of CVE data** - ~125,000 CVEs, ~500,000 affected-product entries
 - ⚡ **Fast lookups** - SQLite with optimized indexes
 - 🌐 **Hosted on GitHub** - Downloaded automatically with `update-db` command
 
@@ -981,31 +983,34 @@ dockerscan update-db --from-file /path/to/cve-db.sqlite
 
 > **Note**: The first time you run `dockerscan`, it will prompt you to download the database. After that, you can update it periodically with `update-db`.
 
-#### Building the Database Manually (nvd2sqlite)
+#### Building the Database Manually (nvd2sqlite-cvelistV5)
 
-For advanced users, you can build the CVE database from NVD directly:
+For advanced users, you can build the CVE database from the MITRE cvelistV5 snapshot directly:
 
 ```bash
 # Build the tool
-make build  # Builds both dockerscan and nvd2sqlite
+go build -o bin/nvd2sqlite-cvelistV5 ./cmd/nvd2sqlite-cvelistV5
 
-# Download CVEs (last 2.5 years by default)
-./bin/nvd2sqlite --output data/cve-db.sqlite --verbose
-
-# With NVD API key (10x faster - 50 req/30sec vs 5 req/30sec)
-NVD_API_KEY=your-key ./bin/nvd2sqlite --output data/cve-db.sqlite --verbose
+# Download the latest snapshot and build the database (last 2.5 years by default)
+./bin/nvd2sqlite-cvelistV5 --output data/cve-db.sqlite --verbose
 
 # Custom date range
-./bin/nvd2sqlite --output data/cve-db.sqlite \
+./bin/nvd2sqlite-cvelistV5 --output data/cve-db.sqlite \
   --start-date 2023-01-01 \
   --end-date 2024-12-31
+
+# From an already-downloaded snapshot zip (offline / air-gapped)
+./bin/nvd2sqlite-cvelistV5 --output data/cve-db.sqlite \
+  --input 2026-07-13_all_CVEs_at_midnight.zip.zip
 ```
 
-**nvd2sqlite features:**
-- ⚡ **4 parallel download workers** for faster downloads
-- 🔄 **Automatic retry with exponential backoff** for rate limiting (HTTP 429)
-- 📦 **Downloads to temp directory**, then processes sequentially
+**nvd2sqlite-cvelistV5 features:**
+- 🌐 **No API keys, no rate limits** - single zip download from GitHub's CDN
+- ⚡ **Parallel parsing** - one worker per CPU core, ~300k CVE records in minutes
+- 🧹 **Version-range normalization** - free-text CNA ranges (`>=1.0, <2.0`, comma lists, `v` prefixes) converted to proper ranges
 - 🗄️ **SQLite output** with indexed tables for fast lookups
+
+> **Deprecated**: the previous `cmd/nvd2sqlite` tool (NVD API 2.0 source) is kept for reference but is no longer used or maintained. The NVD API's rate limits and frequent 503s/timeouts made daily automated builds unreliable.
 
 ---
 

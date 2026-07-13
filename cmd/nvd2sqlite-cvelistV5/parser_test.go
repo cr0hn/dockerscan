@@ -139,10 +139,10 @@ func TestSelectDescription(t *testing.T) {
 
 func TestSelectCVSS_Preference(t *testing.T) {
 	tests := []struct {
-		name     string
-		rec      *cveRecord
-		wantSev  string
-		wantScr  float64
+		name    string
+		rec     *cveRecord
+		wantSev string
+		wantScr float64
 	}{
 		{
 			name: "prefer v3.1 over v3.0",
@@ -233,18 +233,25 @@ func TestExpandVersions(t *testing.T) {
 		in   versionEntry
 		want []versionRange
 	}{
+		// Dominant corpus shape: exact + structured end bound stays a single
+		// half-open range (A1 must NOT turn this into [X,X]).
 		{"exact + lessThan", versionEntry{Version: "1.0", LessThan: "1.5"},
 			[]versionRange{{"1.0", "including", "1.5", "excluding"}}},
+		{"exact three-part + lessThan", versionEntry{Version: "3.0.0", LessThan: "3.0.14"},
+			[]versionRange{{"3.0.0", "including", "3.0.14", "excluding"}}},
 		{"exact + lessThanOrEqual", versionEntry{Version: "2.0", LessThanOrEqual: "2.9"},
 			[]versionRange{{"2.0", "including", "2.9", "including"}}},
 		{"unbounded start zero", versionEntry{Version: "0", LessThan: "3.0"},
 			[]versionRange{{"", "", "3.0", "excluding"}}},
 		{"unbounded start star", versionEntry{Version: "*", LessThan: "4.0"},
 			[]versionRange{{"", "", "4.0", "excluding"}}},
-		{"free text version", versionEntry{Version: "before 1.2.3"},
-			[]versionRange{{"before 1.2.3", "including", "", ""}}},
-		{"only exact", versionEntry{Version: "5.5"},
-			[]versionRange{{"5.5", "including", "", ""}}},
+		// A1: a bare exact with no end bound becomes the closed range [X,X].
+		{"only exact becomes closed range", versionEntry{Version: "5.5"},
+			[]versionRange{{"5.5", "including", "5.5", "including"}}},
+		{"comma list of exacts", versionEntry{Version: "11.0.0, 11.0.1"},
+			[]versionRange{{"11.0.0", "including", "11.0.0", "including"}, {"11.0.1", "including", "11.0.1", "including"}}},
+		{"v prefix stripped exact", versionEntry{Version: "v2.0.1"},
+			[]versionRange{{"2.0.1", "including", "2.0.1", "including"}}},
 		// Free-text operator expressions (CNA-provided, ~13% of real rows).
 		{"lt in version field", versionEntry{Version: "< 3.1.1"},
 			[]versionRange{{"", "", "3.1.1", "excluding"}}},
@@ -252,16 +259,42 @@ func TestExpandVersions(t *testing.T) {
 			[]versionRange{{"", "", "5.4", "including"}}},
 		{"combined range", versionEntry{Version: ">=v1.0.0-rc93, < 1.1.12"},
 			[]versionRange{{"1.0.0-rc93", "including", "1.1.12", "excluding"}}},
-		{"gt bound", versionEntry{Version: "> 2.0"},
+		{"gt bound stays open", versionEntry{Version: "> 2.0"},
 			[]versionRange{{"2.0", "excluding", "", ""}}},
-		{"comma list of exacts", versionEntry{Version: "11.0.0, 11.0.1"},
-			[]versionRange{{"11.0.0", "including", "", ""}, {"11.0.1", "including", "", ""}}},
-		{"v prefix stripped exact", versionEntry{Version: "v2.0.1"},
-			[]versionRange{{"2.0.1", "including", "", ""}}},
+		// Genuine ">=X" stays an open range (NOT [X,X]).
+		{"ge bound stays open", versionEntry{Version: ">= 2.0"},
+			[]versionRange{{"2.0", "including", "", ""}}},
 		{"v prefix stripped in lessThan", versionEntry{Version: "1.0", LessThan: "v1.5"},
 			[]versionRange{{"1.0", "including", "1.5", "excluding"}}},
-		{"unparseable mixed stays verbatim", versionEntry{Version: "8.0 SP1, < 9"},
-			[]versionRange{{"8.0 SP1, < 9", "including", "", ""}}},
+		// A4: wildcard branch versions.
+		{"wildcard 2.x", versionEntry{Version: "2.x"},
+			[]versionRange{{"2", "including", "3", "excluding"}}},
+		{"wildcard 2.5.X", versionEntry{Version: "2.5.X"},
+			[]versionRange{{"2.5", "including", "2.6", "excluding"}}},
+		{"wildcard 2.star", versionEntry{Version: "2.*"},
+			[]versionRange{{"2", "including", "3", "excluding"}}},
+		// A2: recognizable free-text ranges.
+		{"and earlier", versionEntry{Version: "9.0 and earlier"},
+			[]versionRange{{"", "", "9.0", "including"}}},
+		{"or prior", versionEntry{Version: "9.0 or prior"},
+			[]versionRange{{"", "", "9.0", "including"}}},
+		{"through range", versionEntry{Version: "1.0 through 1.5"},
+			[]versionRange{{"1.0", "including", "1.5", "including"}}},
+		{"dash range", versionEntry{Version: "1.0 - 1.5"},
+			[]versionRange{{"1.0", "including", "1.5", "including"}}},
+		// A2: unparseable text becomes a harmless dead [raw,raw] row.
+		{"free text version verbatim", versionEntry{Version: "before 1.2.3"},
+			[]versionRange{{"before 1.2.3", "including", "before 1.2.3", "including"}}},
+		{"unparseable mixed verbatim", versionEntry{Version: "8.0 SP1, < 9"},
+			[]versionRange{{"8.0 SP1, < 9", "including", "8.0 SP1, < 9", "including"}}},
+		// A structured end bound survives wildcard, verbatim and multi-exact
+		// version fields (the CNA's machine-readable bound always wins).
+		{"wildcard keeps structured end", versionEntry{Version: "1.x", LessThanOrEqual: "1.8"},
+			[]versionRange{{"1", "including", "1.8", "including"}}},
+		{"verbatim keeps structured end", versionEntry{Version: "8.0 SP1", LessThan: "9.0"},
+			[]versionRange{{"8.0 SP1", "including", "9.0", "excluding"}}},
+		{"multi exact collapses to structured end", versionEntry{Version: "1.0, 1.1", LessThan: "2.0"},
+			[]versionRange{{"1.0", "including", "2.0", "excluding"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -309,6 +342,63 @@ func TestBuildProductRows(t *testing.T) {
 		}
 		if rows[0].VersionStart != "2.0" {
 			t.Errorf("wrong version kept: %+v", rows[0])
+		}
+	})
+
+	// A3: defaultStatus "unaffected" with no affected enumeration -> no row.
+	t.Run("defaultStatus unaffected emits nothing", func(t *testing.T) {
+		rows := buildProductRows([]affectedEntry{{
+			Vendor: "v", Product: "p", DefaultStatus: "unaffected",
+			Versions: []versionEntry{{Version: "1.0", Status: "unaffected"}},
+		}})
+		if len(rows) != 0 {
+			t.Fatalf("len = %d, want 0 (fully-fixed product)", len(rows))
+		}
+	})
+
+	// A3: defaultStatus "affected" with only unaffected enumerations keeps the
+	// unbounded product-level row.
+	t.Run("defaultStatus affected keeps bare row", func(t *testing.T) {
+		rows := buildProductRows([]affectedEntry{{
+			Vendor: "v", Product: "p", DefaultStatus: "affected",
+			Versions: []versionEntry{{Version: "1.0", Status: "unaffected"}},
+		}})
+		if len(rows) != 1 {
+			t.Fatalf("len = %d, want 1 (unbounded affected branch)", len(rows))
+		}
+		if rows[0].VersionStart != "" || rows[0].VersionEnd != "" {
+			t.Errorf("bare row wrong: %+v", rows[0])
+		}
+	})
+
+	// A4: a git versionType entry is skipped (commit hashes are not comparable).
+	t.Run("git versionType skipped", func(t *testing.T) {
+		rows := buildProductRows([]affectedEntry{{
+			Vendor: "v", Product: "p",
+			Versions: []versionEntry{
+				{Version: "0a1b2c3d", Status: "affected", VersionType: "git"},
+				{Version: "2.0", Status: "affected", LessThan: "2.5"},
+			},
+		}})
+		if len(rows) != 1 {
+			t.Fatalf("len = %d, want 1 (git row skipped)", len(rows))
+		}
+		if rows[0].VersionStart != "2.0" || rows[0].VersionEnd != "2.5" {
+			t.Errorf("wrong row kept: %+v", rows[0])
+		}
+	})
+
+	// A6: identical (vendor, product, range) rows within a record are deduped.
+	t.Run("dedupe identical rows", func(t *testing.T) {
+		rows := buildProductRows([]affectedEntry{{
+			Vendor: "v", Product: "p",
+			Versions: []versionEntry{
+				{Version: "2.0", Status: "affected", LessThan: "2.5"},
+				{Version: "2.0", Status: "affected", LessThan: "2.5"},
+			},
+		}})
+		if len(rows) != 1 {
+			t.Fatalf("len = %d, want 1 (deduped)", len(rows))
 		}
 	})
 }

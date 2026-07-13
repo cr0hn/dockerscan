@@ -680,9 +680,10 @@ var defaultAliases = []struct {
 	{"redis", "redis", "redis-server", "dpkg"},
 	{"redis", "redis", "redis", "apk"},
 
-	// zlib
-	{"gnu", "gzip", "zlib1g", "dpkg"},
-	{"gnu", "gzip", "zlib", "apk"},
+	// zlib (vendor/product "zlib" in CVE data; the historical gnu/gzip mapping
+	// was wrong and leaked gzip CVEs into zlib packages)
+	{"zlib", "zlib", "zlib1g", "dpkg"},
+	{"zlib", "zlib", "zlib", "apk"},
 
 	// systemd
 	{"systemd_project", "systemd", "systemd", "dpkg"},
@@ -750,7 +751,7 @@ func updateMetadata(db *sql.DB, totalCVEs int) error {
 		"last_modified":  now, // Used by dockerscan to check database age
 		"nvd_source":     "MITRE cvelistV5",
 		"total_cves":     fmt.Sprintf("%d", totalCVEs),
-		"schema_version": "1",
+		"schema_version": "2",
 	}
 
 	for key, value := range metadata {

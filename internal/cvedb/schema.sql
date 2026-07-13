@@ -22,11 +22,11 @@ CREATE TABLE IF NOT EXISTS affected_products (
 );
 
 CREATE TABLE IF NOT EXISTS package_aliases (
-    cpe_vendor TEXT NOT NULL,
-    cpe_product TEXT NOT NULL,
+    vendor TEXT NOT NULL,
+    product TEXT NOT NULL,
     package_name TEXT NOT NULL,
     package_source TEXT,
-    PRIMARY KEY (cpe_vendor, cpe_product, package_name, package_source)
+    PRIMARY KEY (vendor, product, package_name, package_source)
 );
 
 CREATE TABLE IF NOT EXISTS metadata (
@@ -37,6 +37,6 @@ CREATE TABLE IF NOT EXISTS metadata (
 CREATE INDEX IF NOT EXISTS idx_products_vendor_product ON affected_products(vendor, product);
 CREATE INDEX IF NOT EXISTS idx_products_cve ON affected_products(cve_id);
 CREATE INDEX IF NOT EXISTS idx_aliases_name ON package_aliases(package_name);
-CREATE INDEX IF NOT EXISTS idx_aliases_cpe ON package_aliases(cpe_vendor, cpe_product);
+CREATE INDEX IF NOT EXISTS idx_aliases_cpe ON package_aliases(vendor, product);
 CREATE INDEX IF NOT EXISTS idx_cves_severity ON cves(severity);
 CREATE INDEX IF NOT EXISTS idx_cves_published ON cves(published_date);

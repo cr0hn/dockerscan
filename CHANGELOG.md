@@ -5,6 +5,28 @@ Most recent changes appear first.
 
 ---
 
+## [2026-07-13] - Correct version matching, multi-range CVEs and FixedVersion (peer-reviewed)
+
+Designed via peer review (3 independent reviewers on the proposal, 3 on the implementation, plus empirical validation against real images). Replaces the naive version comparison that broke on any version containing a hyphen.
+
+### Added
+- `internal/version`: dpkg-style version comparator (Debian Policy 5.6.12) with a fixed normalization pipeline: epoch strip → prerelease separator rewrite (`-rc`/`_rc`/`-alpha`/`-beta`/`-pre[view]` → `~`, apk underscore forms included, `_p`/`_git`/`-rN` post-release excluded) → distro-revision strip. Digit runs compare without integer parsing (no overflow on git-timestamp versions).
+- `internal/cvedb`: version ranges grouped per (vendor, product) with `AliasVerified` flag; portable UNION query fetches ranges only from product rows matched by the package's aliases; schema-version gate (v1 DBs treated conservatively, warning suggests `update-db`)
+- Generator (`nvd2sqlite-cvelistV5`): exact versions emitted as closed ranges `[X,X]`; free-text shapes parsed (`X and earlier`, `A through B`); unparseable text becomes dead `[raw,raw]` rows (never an open `>=` bound); `defaultStatus` honored; `versionType=git` skipped; wildcards `2.x` → `[2,3)`; structured `lessThan` bounds survive wildcard/verbatim/comma-list version fields; `schema_version=2`
+- Scanner: evaluates ALL matching (vendor, product) groups; `FixedVersion` = max excluding-End across matched ranges; mandatory backport disclosure (`match_basis`, `distro_revision`, remediation note); severity `UNKNOWN`/`NONE` → `INFO`
+
+### Fixed
+- Versionless CVE rows matched by bare product name no longer flag unrelated packages (GNU coreutils was getting all uutils/coreutils CVEs — 20 false positives per ubuntu:22.04 scan)
+- zlib package alias pointed at vendor/product `gnu/gzip` — gzip CVEs no longer reported against zlib1g/zlib
+- `internal/cvedb/schema.sql` had `cpe_vendor`/`cpe_product` columns inconsistent with the generator schema
+
+### Verified
+- 12 test packages green (`go test ./...`), incl. new comparator table (40+ cases), range-evaluation, generator regression and fixture-DB query tests
+- ubuntu:22.04: 59 package CVE findings; ground truth CVE-2024-4603/CVE-2023-6237 on libssl3 3.0.2 match with exact ranges and correct fixed versions; uutils and gzip false positives gone
+- alpine:3.19: apk `-rN`/`_git` handling correct (musl 1.2.4_git20230717-r5 in [0.9.13,1.2.6))
+
+---
+
 ## [2026-07-13] - Fix package CVE detection (was silently broken end-to-end)
 
 Verified the new cvelistV5 database against the real dockerscan binary and found the whole package-CVE pipeline had never worked. With these fixes, `dockerscan --scanners vulnerabilities ubuntu:22.04` reports 24 package CVE findings (was 0).

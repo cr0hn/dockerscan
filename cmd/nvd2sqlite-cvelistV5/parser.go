@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -68,9 +69,10 @@ type metricEntry struct {
 }
 
 type affectedEntry struct {
-	Vendor   string         `json:"vendor"`
-	Product  string         `json:"product"`
-	Versions []versionEntry `json:"versions"`
+	Vendor        string         `json:"vendor"`
+	Product       string         `json:"product"`
+	DefaultStatus string         `json:"defaultStatus"`
+	Versions      []versionEntry `json:"versions"`
 }
 
 type versionEntry struct {
@@ -256,9 +258,19 @@ func deriveSeverity(score float64, v2 bool) string {
 // buildProductRows maps containers.cna.affected[] into affected_products rows.
 // Entries where both vendor and product are empty or "n/a" are skipped. Vendor
 // and product are lowercased to match how CPE-derived data is stored (and how
-// the consumer queries).
+// the consumer queries). Identical (vendor, product, range) rows within a
+// single record are de-duplicated (A6).
 func buildProductRows(affected []affectedEntry) []productRow {
 	var rows []productRow
+	seen := make(map[productRow]bool)
+
+	add := func(r productRow) {
+		if seen[r] {
+			return
+		}
+		seen[r] = true
+		rows = append(rows, r)
+	}
 
 	for _, a := range affected {
 		vendor := strings.ToLower(strings.TrimSpace(a.Vendor))
@@ -273,8 +285,12 @@ func buildProductRows(affected []affectedEntry) []productRow {
 			if !strings.EqualFold(strings.TrimSpace(v.Status), "affected") {
 				continue
 			}
+			// A4: git versionType values are commit hashes, not comparable.
+			if strings.EqualFold(strings.TrimSpace(v.VersionType), "git") {
+				continue
+			}
 			for _, r := range expandVersions(v) {
-				rows = append(rows, productRow{
+				add(productRow{
 					Vendor:           vendor,
 					Product:          product,
 					VersionStart:     r.start,
@@ -286,10 +302,13 @@ func buildProductRows(affected []affectedEntry) []productRow {
 			}
 		}
 
-		// Emit at least one row per affected entry so product-level matches work
-		// even when no parseable version ranges are present.
-		if emitted == 0 {
-			rows = append(rows, productRow{Vendor: vendor, Product: product})
+		// A3: when no "affected" version enumeration produced a row, the branch
+		// is affected as a whole only if the default status says so. A missing
+		// defaultStatus keeps the previous behavior (a product-level match); an
+		// explicit "unaffected" default emits nothing (avoids a bogus unbounded
+		// row on fully-fixed products).
+		if emitted == 0 && !strings.EqualFold(strings.TrimSpace(a.DefaultStatus), "unaffected") {
+			add(productRow{Vendor: vendor, Product: product})
 		}
 	}
 
@@ -306,7 +325,7 @@ type versionRange struct {
 // normalized version ranges.
 //
 //	version "0"/"*"/""       -> unbounded start (empty version_start)
-//	version X                -> version_start = X, type "including"
+//	version X                -> exact match, stored as the closed range [X,X]
 //	lessThan Y               -> version_end = Y, type "excluding"
 //	lessThanOrEqual Y        -> version_end = Y, type "including"
 //
@@ -316,11 +335,17 @@ type versionRange struct {
 //
 //	"< 1.5" / "<= 1.5"           -> bound-only range
 //	">= 1.0, < 2.0"              -> combined range
-//	"1.0, 1.1, 2.0"              -> one exact row per version
+//	"1.0, 1.1, 2.0"              -> one exact [X,X] row per version
 //	"v1.2.3"                     -> "1.2.3" (leading v stripped everywhere)
+//	"2.x" / "2.5.X" / "2.*"      -> [2,3) / [2.5,2.6) (A4 wildcard)
+//	"X and earlier"             -> (-inf, X] (A2)
+//	"A through B" / "A - B"     -> [A,B] (A2)
 //
-// Anything that doesn't fully parse is stored verbatim as version_start with
-// type "including" (previous behavior).
+// After the structured end bound (lessThan/lessThanOrEqual) is merged in, an
+// exact version that still has no end bound becomes the closed range [X,X]
+// (A1): the only Start-only/including rows left are genuine ">=X" open ranges.
+// Anything that still does not parse is stored as the closed range [raw,raw]
+// (A2): a harmless dead row that never matches but preserves the record.
 func expandVersions(v versionEntry) []versionRange {
 	// Structured bounds from the schema fields.
 	var structEnd, structEndType string
@@ -338,25 +363,66 @@ func expandVersions(v versionEntry) []versionRange {
 		return []versionRange{{end: structEnd, endType: structEndType}}
 	}
 
-	if ranges, ok := parseVersionExpr(ver); ok {
-		// Structured end bound fills the gap only for a single open-ended range.
-		if len(ranges) == 1 && ranges[0].end == "" && structEnd != "" {
-			ranges[0].end = structEnd
-			ranges[0].endType = structEndType
+	// A4: wildcard branch versions expand to a bounded [prefix, next) range. A
+	// structured end bound is the CNA's explicit upper limit and wins over the
+	// computed next-prefix (e.g. version "1.x" + lessThanOrEqual "1.8" -> [1,1.8]).
+	if r, ok := parseWildcard(ver); ok {
+		if structEnd != "" {
+			r.end, r.endType = structEnd, structEndType
+		}
+		return []versionRange{r}
+	}
+
+	if bound, exacts, ok := parseVersionExpr(ver); ok {
+		var ranges []versionRange
+		if bound != nil {
+			// Structured end bound fills a single open-ended operator range.
+			if bound.end == "" && structEnd != "" {
+				bound.end, bound.endType = structEnd, structEndType
+			}
+			ranges = append(ranges, *bound)
+		}
+		// Comma-listed exacts plus a structured end bound mean "these versions
+		// up to the bound" (e.g. version "1.0, 1.1", lessThan "2.0"): collapse
+		// to [first, bound) — CNAs list versions in ascending order.
+		if bound == nil && len(exacts) > 0 && structEnd != "" {
+			return append(ranges, versionRange{
+				start: exacts[0], startType: "including",
+				end: structEnd, endType: structEndType,
+			})
+		}
+		for _, e := range exacts {
+			// A1: exact match without an end bound -> closed range [X,X].
+			ranges = append(ranges, versionRange{
+				start: e, startType: "including",
+				end: e, endType: "including",
+			})
 		}
 		return ranges
 	}
 
-	// Unparseable free text: verbatim, as before.
-	return []versionRange{{start: ver, startType: "including", end: structEnd, endType: structEndType}}
+	// A2: recognizable free-text ranges before falling back to verbatim.
+	if r, ok := parseFreeTextRange(ver); ok {
+		return []versionRange{r}
+	}
+
+	// A2: unparseable text. With a structured end bound the row keeps it (the
+	// bound is machine-generated and trustworthy even when the version text is
+	// not); otherwise a closed [raw,raw] dead row preserves the record without
+	// ever becoming an open ">=garbage" range.
+	if structEnd != "" {
+		return []versionRange{{start: ver, startType: "including", end: structEnd, endType: structEndType}}
+	}
+	return []versionRange{{start: ver, startType: "including", end: ver, endType: "including"}}
 }
 
 // parseVersionExpr parses a version field that may contain comma-separated
-// exact versions and/or operator expressions. ok is false when any token does
-// not parse, in which case the caller stores the raw string.
-func parseVersionExpr(expr string) ([]versionRange, bool) {
+// exact versions and/or operator expressions. It returns the combined operator
+// bound (nil when the field has none) and the list of exact versions. ok is
+// false when any token does not parse, in which case the caller falls back to
+// free-text handling.
+func parseVersionExpr(expr string) (bound *versionRange, exacts []string, ok bool) {
 	var combined versionRange
-	var exacts []string
 	hasBound := false
 
 	for _, tok := range strings.Split(expr, ",") {
@@ -364,9 +430,9 @@ func parseVersionExpr(expr string) ([]versionRange, bool) {
 		if tok == "" {
 			continue
 		}
-		op, val, ok := parseVersionToken(tok)
-		if !ok {
-			return nil, false
+		op, val, tokOK := parseVersionToken(tok)
+		if !tokOK {
+			return nil, nil, false
 		}
 		switch op {
 		case ">=":
@@ -386,17 +452,72 @@ func parseVersionExpr(expr string) ([]versionRange, bool) {
 		}
 	}
 
-	var ranges []versionRange
+	if !hasBound && len(exacts) == 0 {
+		return nil, nil, false
+	}
 	if hasBound {
-		ranges = append(ranges, combined)
+		bound = &combined
 	}
-	for _, e := range exacts {
-		ranges = append(ranges, versionRange{start: e, startType: "including"})
+	return bound, exacts, true
+}
+
+// wildcardRe matches a wildcard branch version such as "2.x", "2.5.X" or "2.*".
+// The captured group is the numeric prefix.
+var wildcardRe = regexp.MustCompile(`^[vV]?([0-9]+(?:\.[0-9]+)*)\.(?:[xX]|\*)$`)
+
+// parseWildcard converts a wildcard branch version into the bounded range
+// [prefix, next) where next increments the last numeric component of the prefix
+// (A4). "2.x" -> [2,3), "2.5.X" -> [2.5,2.6).
+func parseWildcard(s string) (versionRange, bool) {
+	m := wildcardRe.FindStringSubmatch(s)
+	if m == nil {
+		return versionRange{}, false
 	}
-	if len(ranges) == 0 {
-		return nil, false
+	prefix := m[1]
+	parts := strings.Split(prefix, ".")
+	last, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return versionRange{}, false
 	}
-	return ranges, true
+	parts[len(parts)-1] = strconv.Itoa(last + 1)
+	next := strings.Join(parts, ".")
+	return versionRange{start: prefix, startType: "including", end: next, endType: "excluding"}, true
+}
+
+// Free-text range shapes (A2). The version token allows the usual
+// version-looking characters after an optional leading "v".
+const versionTokenPat = `[vV]?([0-9][0-9A-Za-z.\-+_]*)`
+
+var (
+	earlierRe   = regexp.MustCompile(`(?i)^\s*` + versionTokenPat + `\s+(?:and|or)\s+(?:earlier|prior)\s*$`)
+	throughRe   = regexp.MustCompile(`(?i)^\s*` + versionTokenPat + `\s+(?:through|to)\s+` + versionTokenPat + `\s*$`)
+	dashRangeRe = regexp.MustCompile(`(?i)^\s*` + versionTokenPat + `\s+-\s+` + versionTokenPat + `\s*$`)
+)
+
+// parseFreeTextRange recognizes two common English range shapes:
+//
+//	"X and earlier" / "X or prior"  -> (-inf, X] including
+//	"A through B" / "A to B" / "A - B" -> [A,B] both including
+//
+// The dash form requires spaces around the dash so a version-internal hyphen is
+// never mistaken for a range separator.
+func parseFreeTextRange(s string) (versionRange, bool) {
+	if m := earlierRe.FindStringSubmatch(s); m != nil {
+		return versionRange{end: cleanVersion(m[1]), endType: "including"}, true
+	}
+	if m := throughRe.FindStringSubmatch(s); m != nil {
+		return versionRange{
+			start: cleanVersion(m[1]), startType: "including",
+			end: cleanVersion(m[2]), endType: "including",
+		}, true
+	}
+	if m := dashRangeRe.FindStringSubmatch(s); m != nil {
+		return versionRange{
+			start: cleanVersion(m[1]), startType: "including",
+			end: cleanVersion(m[2]), endType: "including",
+		}, true
+	}
+	return versionRange{}, false
 }
 
 // versionTokenRe matches an optional comparison operator followed by a
