@@ -1171,6 +1171,7 @@ See the [LICENSE](LICENSE) file for complete legal terms.
 
 [![Website](https://img.shields.io/badge/Website-cr0hn.com-blue?style=for-the-badge&logo=google-chrome)](https://cr0hn.com)
 [![GitHub](https://img.shields.io/badge/GitHub-cr0hn-black?style=for-the-badge&logo=github)](https://github.com/cr0hn)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Daniel%20Garcia-0A66C2?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/garciagarciadaniel/)
 [![Twitter](https://img.shields.io/badge/Twitter-@ggdaniel-1DA1F2?style=for-the-badge&logo=twitter)](https://twitter.com/ggdaniel)
 
 **Security Researcher | Open Source Developer | Docker Security Expert**
