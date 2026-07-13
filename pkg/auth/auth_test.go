@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -722,7 +723,7 @@ func TestGetFromDockerConfig_Priority(t *testing.T) {
 				dockerConfig: tt.dockerCfg,
 			}
 
-			auth, err := ac.getFromDockerConfig(nil, tt.registry) //nolint:staticcheck
+			auth, err := ac.getFromDockerConfig(context.TODO(), tt.registry)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("getFromDockerConfig() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -774,7 +775,7 @@ func TestGetFromCredHelper_Validation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			auth, err := getFromCredHelper(nil, tt.credStoreName, "ghcr.io", "ghcr.io") //nolint:staticcheck
+			auth, err := getFromCredHelper(context.TODO(), tt.credStoreName, "ghcr.io", "ghcr.io")
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("getFromCredHelper() error = %v, wantErr %v", err, tt.wantErr)
 			}
