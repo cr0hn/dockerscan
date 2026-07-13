@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cr0hn/dockerscan/v2/internal/cvedb"
+	"github.com/cr0hn/dockerscan/v2/internal/logger"
 	"github.com/cr0hn/dockerscan/v2/internal/models"
 	"github.com/cr0hn/dockerscan/v2/internal/scanner"
 	"github.com/cr0hn/dockerscan/v2/pkg/docker"
@@ -99,6 +100,7 @@ func (s *VulnerabilityScanner) checkVulnerablePackages(ctx context.Context, pack
 	// Query database
 	cvesByPkg, err := s.cveDB.QueryByPackages(pkgInfos)
 	if err != nil {
+		logger.Debug("CVE database package query failed: %v", err)
 		return findings
 	}
 

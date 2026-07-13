@@ -161,7 +161,7 @@ func (d *CVEDB) queryPackage(pkg PackageInfo) ([]CVEEntry, error) {
 	query1 := `
 		SELECT DISTINCT ap.cve_id
 		FROM package_aliases pa
-		JOIN affected_products ap ON pa.cpe_vendor = ap.vendor AND pa.cpe_product = ap.product
+		JOIN affected_products ap ON pa.vendor = ap.vendor AND pa.product = ap.product
 		WHERE pa.package_name IN (` + buildPlaceholders(len(aliases)) + `)
 	`
 	if pkg.Source != "" {
@@ -303,11 +303,11 @@ func (d *CVEDB) getCVEDetails(cveIDs []string) ([]CVEEntry, error) {
 				CVSSVector:  cvssVector,
 			}
 
-			// Parse dates
-			if publishedDate, err := time.Parse(time.RFC3339, publishedDateStr); err == nil {
+			// Parse dates (DB stores NVD-style timestamps without timezone)
+			if publishedDate, ok := parseDBTime(publishedDateStr); ok {
 				cve.PublishedDate = publishedDate
 			}
-			if modifiedDate, err := time.Parse(time.RFC3339, modifiedDateStr); err == nil {
+			if modifiedDate, ok := parseDBTime(modifiedDateStr); ok {
 				cve.ModifiedDate = modifiedDate
 			}
 
@@ -347,6 +347,17 @@ func (d *CVEDB) getCVEDetails(cveIDs []string) ([]CVEEntry, error) {
 }
 
 // buildPlaceholders builds a string of SQL placeholders (?, ?, ?)
+// parseDBTime parses the timestamp formats stored in the CVE database
+// (NVD-style without timezone, or RFC3339).
+func parseDBTime(s string) (time.Time, bool) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05.000", "2006-01-02T15:04:05"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
 func buildPlaceholders(count int) string {
 	if count == 0 {
 		return ""

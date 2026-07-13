@@ -310,8 +310,9 @@ func (c *Client) ScanImageFiles(ctx context.Context, imageName string, callback 
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Extract the image tar
-	if err := archive.Unpack(reader, tmpDir, &archive.TarOptions{}); err != nil {
+	// Extract the image tar. NoLchown: preserving file ownership requires
+	// root; scanning only needs the contents (like tar --no-same-owner).
+	if err := archive.Unpack(reader, tmpDir, &archive.TarOptions{NoLchown: true}); err != nil {
 		return fmt.Errorf("failed to extract image: %w", err)
 	}
 

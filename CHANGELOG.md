@@ -5,6 +5,18 @@ Most recent changes appear first.
 
 ---
 
+## [2026-07-13] - Fix package CVE detection (was silently broken end-to-end)
+
+Verified the new cvelistV5 database against the real dockerscan binary and found the whole package-CVE pipeline had never worked. With these fixes, `dockerscan --scanners vulnerabilities ubuntu:22.04` reports 24 package CVE findings (was 0).
+
+### Fixed
+- `internal/cvedb/db.go`: alias lookup JOIN used non-existent columns `pa.cpe_vendor`/`pa.cpe_product` (tables have `vendor`/`product`) — the query failed on every scan and the error was swallowed, so package CVE detection always returned 0 findings, with any database
+- `pkg/docker/client.go`: image extraction failed on macOS/non-root (`Lchown ... operation not permitted`) breaking `ListPackages` — added `NoLchown: true` (scanning needs contents, not ownership)
+- `internal/cvedb/db.go`: published/modified dates stored in NVD format (no timezone) failed RFC3339 parsing — dates were always zero
+- `internal/scanner/vulnerabilities/vulnerabilities.go`: CVE database query errors are now logged with `--debug` instead of silently discarded
+
+---
+
 ## [2026-07-13] - New CVE database source: MITRE cvelistV5 (replaces NVD API)
 
 ### Added
