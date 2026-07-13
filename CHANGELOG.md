@@ -5,6 +5,23 @@ Most recent changes appear first.
 
 ---
 
+## [2026-07-13] - Optional NVD CVSS enrichment, vendor-verified matches, v2.1.0 prep
+
+### Added
+- `nvd2sqlite-cvelistV5 --enrich-from-nvd` / `--enrich-only` / `--enrich-timeout`: best-effort CVSS enrichment from the NVD API 2.0 for the ~7% of CVEs whose CNA published no metrics (~9,700 in the current window). Hard time bound, 6s request spacing (optional `NVD_API_KEY` header), retry with backoff on 429/5xx/timeouts; NVD downtime NEVER fails the build (warning + partial results kept). Workflow runs it as a `continue-on-error` step (15m bound) before the sanity check.
+- 11 new vendor-verified package aliases (gnu/coreutils, gnu/tar, gnu/sed, gnu/grep, gnu/gzip, gnu/findutils, busybox, musl-libc/musl…) — extends alias coverage so more matches are vendor-verified
+- Findings now carry `vendor_verified` metadata; matches by product name only (vendor unverified) get an explicit caveat in the remediation text
+
+### Changed
+- Version bumped to 2.1.0 (`internal/config/config.go`)
+- Release workflow (`dockerscan.yml`) Go version aligned with go.mod (1.22 → 1.25)
+
+### Operations (same day)
+- Daily CVE workflow verified green in CI; published `data/latest.db.gz` replaced (1,530 → 125,213 CVEs, schema v2) and re-downloaded successfully via `dockerscan update-db`
+- Closed 7 stale `cve-update-failure` issues (#27-#33)
+
+---
+
 ## [2026-07-13] - Correct version matching, multi-range CVEs and FixedVersion (peer-reviewed)
 
 Designed via peer review (3 independent reviewers on the proposal, 3 on the implementation, plus empirical validation against real images). Replaces the naive version comparison that broke on any version containing a hyphen.

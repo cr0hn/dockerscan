@@ -7,7 +7,7 @@ import (
 
 const (
 	// Version is the application version
-	Version = "2.0.5"
+	Version = "2.1.0"
 
 	// Author is the creator
 	Author = "Daniel Garcia (cr0hn)"

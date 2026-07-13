@@ -134,8 +134,12 @@ func (s *VulnerabilityScanner) buildPackageFinding(pkg docker.PackageInfo, insta
 	matchedStr := rangesString(matched)
 
 	matchedProducts := make([]string, len(groups))
+	vendorVerified := false
 	for i, g := range groups {
 		matchedProducts[i] = g.Vendor + "/" + g.Product
+		if g.AliasVerified {
+			vendorVerified = true
+		}
 	}
 
 	var remediation string
@@ -148,6 +152,9 @@ func (s *VulnerabilityScanner) buildPackageFinding(pkg docker.PackageInfo, insta
 	if distroRev != "" {
 		remediation += fmt.Sprintf(" Note: the distro may have backported a fix in revision %s; verify with the distro security tracker.", distroRev)
 	}
+	if !vendorVerified {
+		remediation += " Note: matched by product name only (vendor unverified); confirm the CVE applies to this package."
+	}
 
 	metadata := map[string]interface{}{
 		"cve_id":             cve.CVEID,
@@ -155,6 +162,7 @@ func (s *VulnerabilityScanner) buildPackageFinding(pkg docker.PackageInfo, insta
 		"package_version":    pkg.Version,
 		"installed_upstream": installed,
 		"matched_products":   matchedProducts,
+		"vendor_verified":    vendorVerified,
 		"matched_range":      matchedStr,
 		"fixed_version":      fixed,
 		"cvss_score":         cve.CVSSScore,

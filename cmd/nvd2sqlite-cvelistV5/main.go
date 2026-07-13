@@ -38,22 +38,28 @@ var cvePathRe = regexp.MustCompile(`cves/.*/CVE-[^/]+\.json$`)
 
 // Command-line flags.
 var (
-	outputPath = flag.String("output", "", "Output SQLite file path (required)")
-	startDate  = flag.String("start-date", "", "Start date for CVEs (YYYY-MM-DD, default: 30 months ago)")
-	endDate    = flag.String("end-date", "", "End date for CVEs (YYYY-MM-DD, default: now)")
-	inputPath  = flag.String("input", "", "Path to a local baseline zip (skips download)")
-	keepZip    = flag.Bool("keep-zip", false, "Do not delete the downloaded zip")
-	verbose    = flag.Bool("verbose", false, "Verbose output")
+	outputPath    = flag.String("output", "", "Output SQLite file path (required)")
+	startDate     = flag.String("start-date", "", "Start date for CVEs (YYYY-MM-DD, default: 30 months ago)")
+	endDate       = flag.String("end-date", "", "End date for CVEs (YYYY-MM-DD, default: now)")
+	inputPath     = flag.String("input", "", "Path to a local baseline zip (skips download)")
+	keepZip       = flag.Bool("keep-zip", false, "Do not delete the downloaded zip")
+	verbose       = flag.Bool("verbose", false, "Verbose output")
+	enrichFromNVD = flag.Bool("enrich-from-nvd", false, "After building, enrich missing CVSS scores from the NVD API 2.0 (best effort, never fails the build)")
+	enrichOnly    = flag.Bool("enrich-only", false, "Skip download/build; enrich an existing --output database from the NVD API 2.0")
+	enrichTimeout = flag.Duration("enrich-timeout", 20*time.Minute, "Hard time bound for the NVD enrichment phase")
 )
 
 // config holds the parsed runtime configuration for run().
 type config struct {
-	outputPath string
-	start      time.Time
-	end        time.Time
-	inputPath  string
-	keepZip    bool
-	verbose    bool
+	outputPath    string
+	start         time.Time
+	end           time.Time
+	inputPath     string
+	keepZip       bool
+	verbose       bool
+	enrichFromNVD bool
+	enrichOnly    bool
+	enrichTimeout time.Duration
 }
 
 // stats aggregates counters reported in the final summary.
@@ -85,12 +91,15 @@ func main() {
 	}
 
 	cfg := config{
-		outputPath: *outputPath,
-		start:      start,
-		end:        end,
-		inputPath:  *inputPath,
-		keepZip:    *keepZip,
-		verbose:    *verbose,
+		outputPath:    *outputPath,
+		start:         start,
+		end:           end,
+		inputPath:     *inputPath,
+		keepZip:       *keepZip,
+		verbose:       *verbose,
+		enrichFromNVD: *enrichFromNVD,
+		enrichOnly:    *enrichOnly,
+		enrichTimeout: *enrichTimeout,
 	}
 
 	if err := run(cfg); err != nil {
@@ -109,6 +118,24 @@ func parseDateFlag(value string, def time.Time) (time.Time, error) {
 // run executes the full pipeline. It is separated from main() so it can be
 // driven directly from tests.
 func run(cfg config) error {
+	// Enrich-only mode: skip download/build and enrich an existing database.
+	if cfg.enrichOnly {
+		fmt.Println("🔍 nvd2sqlite-cvelistV5 - NVD CVSS enrichment (enrich-only mode)")
+		fmt.Println()
+		if _, err := os.Stat(cfg.outputPath); err != nil {
+			return fmt.Errorf("enrich-only requires an existing --output database: %w", err)
+		}
+		db, err := sql.Open("sqlite3", cfg.outputPath)
+		if err != nil {
+			return fmt.Errorf("open database: %w", err)
+		}
+		defer db.Close()
+		if err := enrichFromNVDPhase(db, cfg.start, cfg.end, cfg.enrichTimeout, cfg.verbose); err != nil {
+			return fmt.Errorf("enrich: %w", err)
+		}
+		return nil
+	}
+
 	// Banner.
 	fmt.Println("🔍 nvd2sqlite-cvelistV5 - MITRE cvelistV5 to SQLite Converter")
 	fmt.Printf("  Using %d parser workers\n", runtime.NumCPU())
@@ -167,6 +194,15 @@ func run(cfg config) error {
 	fmt.Println("📝 Updating metadata...")
 	if err := updateMetadata(db, st.cves); err != nil {
 		return fmt.Errorf("update metadata: %w", err)
+	}
+
+	// Optional NVD enrichment (best effort): fill CVSS for CVEs the CNA left
+	// without metrics. Runs after the build and before VACUUM so the compaction
+	// includes any updates. Network/NVD problems never fail the build.
+	if cfg.enrichFromNVD {
+		if err := enrichFromNVDPhase(db, cfg.start, cfg.end, cfg.enrichTimeout, cfg.verbose); err != nil {
+			return fmt.Errorf("enrich: %w", err)
+		}
 	}
 
 	// VACUUM.
@@ -640,6 +676,19 @@ var defaultAliases = []struct {
 
 	// Git
 	{"git-scm", "git", "git", "all"},
+
+	// GNU core toolchain (vendors verified against cvelistV5 data)
+	{"gnu", "coreutils", "coreutils", "all"},
+	{"gnu", "tar", "tar", "all"},
+	{"gnu", "sed", "sed", "all"},
+	{"gnu", "grep", "grep", "all"},
+	{"gnu", "gzip", "gzip", "all"},
+	{"gnu", "findutils", "findutils", "all"},
+
+	// BusyBox / musl (Alpine base)
+	{"busybox", "busybox", "busybox", "apk"},
+	{"musl-libc", "musl", "musl", "apk"},
+	{"musl-libc", "musl", "musl-utils", "apk"},
 
 	// Python
 	{"python", "python", "python3", "dpkg"},
