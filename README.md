@@ -1167,7 +1167,7 @@ See the [LICENSE](LICENSE) file for complete legal terms.
 
 <div align="center">
 
-### **Daniel Garcia (cr0hn)**
+### **Daniel Alfocea (cr0hn)**
 
 [![Website](https://img.shields.io/badge/Website-danielalfocea.com-blue?style=for-the-badge&logo=google-chrome)](https://danielalfocea.com)
 [![GitHub](https://img.shields.io/badge/GitHub-cr0hn-black?style=for-the-badge&logo=github)](https://github.com/cr0hn)
