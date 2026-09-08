@@ -14,7 +14,7 @@
 [![Go Report Card](https://img.shields.io/badge/go%20report-A+-brightgreen.svg)](https://goreportcard.com/report/github.com/cr0hn/dockerscan)
 [![Downloads](https://img.shields.io/github/downloads/cr0hn/dockerscan/total.svg)](https://github.com/cr0hn/dockerscan/releases)
 
-**By [Daniel Garcia (cr0hn)](https://cr0hn.com)** | [GitHub](https://github.com/cr0hn/dockerscan) | [Website](https://cr0hn.com)
+**By [Daniel Alfocea (cr0hn)](https://danielalfocea.com)** | [GitHub](https://github.com/cr0hn/dockerscan) | [Website](https://danielalfocea.com)
 
 [Features](#features) •
 [Installation](#installation) •
@@ -318,8 +318,8 @@ dockerscan -q nginx:latest
 ║                                                                                        ║
 ║                Advanced Docker Security Scanner v2.0.0                                ║
 ║                                                                                        ║
-║   Author:     Daniel Garcia (cr0hn)                                                   ║
-║   Website:    https://cr0hn.com                                                       ║
+║   Author:     Daniel Alfocea (cr0hn)                                                  ║
+║   Website:    https://danielalfocea.com                                               ║
 ╚══════════════════════════════════════════════════════════════════════════════════════╝
 
 🔍 Scanning image: nginx:latest
@@ -1157,8 +1157,8 @@ This license protects the project's sustainability by:
 
 **Contact for commercial licensing:**
 
-Email: cr0hn [at] cr0hn.com
-Website: https://cr0hn.com
+Email: daniel [at] danielalfocea.com
+Website: https://danielalfocea.com
 Flexible licensing terms available for enterprise and startups
 
 See the [LICENSE](LICENSE) file for complete legal terms.
@@ -1169,7 +1169,7 @@ See the [LICENSE](LICENSE) file for complete legal terms.
 
 ### **Daniel Garcia (cr0hn)**
 
-[![Website](https://img.shields.io/badge/Website-cr0hn.com-blue?style=for-the-badge&logo=google-chrome)](https://cr0hn.com)
+[![Website](https://img.shields.io/badge/Website-danielalfocea.com-blue?style=for-the-badge&logo=google-chrome)](https://danielalfocea.com)
 [![GitHub](https://img.shields.io/badge/GitHub-cr0hn-black?style=for-the-badge&logo=github)](https://github.com/cr0hn)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Daniel%20Garcia-0A66C2?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/garciagarciadaniel/)
 [![Twitter](https://img.shields.io/badge/Twitter-@ggdaniel-1DA1F2?style=for-the-badge&logo=twitter)](https://twitter.com/ggdaniel)
@@ -1191,7 +1191,7 @@ Special thanks to:
 
 - **Issues**: [GitHub Issues](https://github.com/cr0hn/dockerscan/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/cr0hn/dockerscan/discussions)
-- **Security**: Report vulnerabilities to cr0hn@cr0hn.com
+- **Security**: Report vulnerabilities to daniel@danielalfocea.com
 
 ---
 
