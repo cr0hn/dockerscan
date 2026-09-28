@@ -1,10 +1,10 @@
 {
-  "version": "2026.09.27.1241",
-  "last_modified": "2026-09-27T12:41:51Z",
-  "cve_count": 151055,
-  "db_size_uncompressed": "218M",
-  "checksum_sha256": "602c0f2d3f1836be1e18ca68233abe858c1bff0d6bf0a3bd9dca5f8d89b3f23f",
+  "version": "2026.09.28.1449",
+  "last_modified": "2026-09-28T14:49:19Z",
+  "cve_count": 150946,
+  "db_size_uncompressed": "216M",
+  "checksum_sha256": "77c91378ef69a7980055c3ad1a896d1b48c045a18fd2a658da0f1ada6136cb14",
   "source": "MITRE cvelistV5",
-  "date_range_start": "2024-03-27",
-  "date_range_end": "2026-09-27"
+  "date_range_start": "2024-03-28",
+  "date_range_end": "2026-09-28"
 }
